@@ -1,0 +1,13 @@
+[Unit]
+Description=MPV YouTube Handler
+After=network.target
+
+[Service]
+Type=simple
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 %h/.local/share/youtube-to-mpv/mpv-handler.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

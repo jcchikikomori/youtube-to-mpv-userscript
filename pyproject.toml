@@ -1,0 +1,12 @@
+[project]
+name = "youtube-to-mpv-handler"
+version = "0.1.0"
+description = "Ensures yt-dlp/youtube-dl are installed for mpv's ytdl_hook (used by the youtube-to-mpv local handler)"
+requires-python = ">=3.8"
+dependencies = [
+    "yt-dlp",
+    "youtube-dl",
+]
+
+[tool.uv]
+package = false
