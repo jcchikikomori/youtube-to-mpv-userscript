@@ -1,3 +1,4 @@
+import { isLoopbackUrl } from '../baseline/loopback.js';
 import type { FetchLike } from '../baseline/types.js';
 
 /**
@@ -13,6 +14,14 @@ export const gmFetch: FetchLike = (url, init) =>
       method: 'GET',
       url,
       onload: (response) => {
+        // GM_xmlhttpRequest follows redirects by default and isn't subject to normal
+        // cross-origin restrictions — re-check the *actual* response origin against the same
+        // loopback allowlist the constructor already enforced on the request URL, so a redirect
+        // can't turn this privileged transport into an SSRF gadget against another local address.
+        if (!isLoopbackUrl(response.finalUrl)) {
+          reject(new Error(`response arrived via a non-loopback URL: ${response.finalUrl}`));
+          return;
+        }
         resolve({
           ok: response.status >= 200 && response.status < 300,
           status: response.status,

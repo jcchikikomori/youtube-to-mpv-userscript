@@ -280,6 +280,7 @@ This userscript runs in a privileged context with access to `GM_*` APIs. Apply t
 - **Never trust YouTube's DOM** — validate extracted video IDs against `/^[a-zA-Z0-9_-]{11}$/` before use.
 - Sanitize any user-configured values (MPV path) before passing to command construction.
 - Validate URLs before opening — only allow `https://youtube.com/watch?v=...` patterns.
+- **The handler's base URL is checked against a literal loopback-hostname allowlist** (`userscript/src/baseline/loopback.ts`), never resolved via DNS (a resolve-then-check would open a DNS-rebinding/TOCTOU gap). `GM_xmlhttpRequest` (`userscript/src/userscript/gmFetch.ts`) follows redirects by default and isn't subject to the browser's own cross-origin checks, so the response's *final* URL is re-checked against the same allowlist before its body is trusted — a redirect can't be used to turn this privileged transport into an SSRF gadget against another local/internal address.
 
 ### Output Encoding
 

@@ -23,3 +23,18 @@ export function assertLoopbackUrl(rawUrl: string): void {
     );
   }
 }
+
+/**
+ * Non-throwing form of assertLoopbackUrl — used to re-check a response's *final* URL after a
+ * possible redirect (GM_xmlhttpRequest follows redirects by default and isn't subject to the
+ * browser's own cross-origin restrictions, so without this a redirect could turn the privileged
+ * transport into an SSRF gadget against an arbitrary local/internal address).
+ */
+export function isLoopbackUrl(rawUrl: string): boolean {
+  try {
+    assertLoopbackUrl(rawUrl);
+    return true;
+  } catch {
+    return false;
+  }
+}

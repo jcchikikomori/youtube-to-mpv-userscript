@@ -6,6 +6,8 @@
 interface GMXmlHttpRequestResponse {
   readonly status: number;
   readonly responseText: string;
+  /** The URL the response actually arrived from, after following any redirects. */
+  readonly finalUrl: string;
 }
 
 interface GMXmlHttpRequestDetails {

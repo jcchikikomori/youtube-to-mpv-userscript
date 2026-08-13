@@ -17,7 +17,7 @@ export class VideoSourceRegistry {
     return this.sources.find((source) => source.supports(input)) ?? null;
   }
 
-  /** Looks up a source by its exact platform name — used for the CLI's --platform override. */
+  /** Looks up a source by its exact platform name. */
   get(platform: string): VideoSource | null {
     return this.sources.find((source) => source.platform === platform) ?? null;
   }

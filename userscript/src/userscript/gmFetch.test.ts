@@ -10,7 +10,11 @@ describe('gmFetch', () => {
     vi.stubGlobal(
       'GM_xmlhttpRequest',
       vi.fn((details: GMXmlHttpRequestDetails) => {
-        details.onload?.({ status: 200, responseText: '{"status":"ok"}' });
+        details.onload?.({
+          status: 200,
+          responseText: '{"status":"ok"}',
+          finalUrl: 'http://127.0.0.1:38421/play?url=x',
+        });
         return { abort: vi.fn() };
       }),
     );
@@ -26,7 +30,11 @@ describe('gmFetch', () => {
     vi.stubGlobal(
       'GM_xmlhttpRequest',
       vi.fn((details: GMXmlHttpRequestDetails) => {
-        details.onload?.({ status: 500, responseText: '{"status":"error"}' });
+        details.onload?.({
+          status: 500,
+          responseText: '{"status":"error"}',
+          finalUrl: 'http://127.0.0.1:38421/play?url=x',
+        });
         return { abort: vi.fn() };
       }),
     );
@@ -35,6 +43,22 @@ describe('gmFetch', () => {
 
     expect(response.ok).toBe(false);
     expect(response.status).toBe(500);
+  });
+
+  it('rejects when the response arrives via a redirect to a non-loopback URL', async () => {
+    vi.stubGlobal(
+      'GM_xmlhttpRequest',
+      vi.fn((details: GMXmlHttpRequestDetails) => {
+        details.onload?.({
+          status: 200,
+          responseText: '{"status":"ok"}',
+          finalUrl: 'http://evil.example.com/play?url=x',
+        });
+        return { abort: vi.fn() };
+      }),
+    );
+
+    await expect(gmFetch('http://127.0.0.1:38421/play?url=x')).rejects.toThrow(/non-loopback/);
   });
 
   it('rejects when GM_xmlhttpRequest reports onerror', async () => {

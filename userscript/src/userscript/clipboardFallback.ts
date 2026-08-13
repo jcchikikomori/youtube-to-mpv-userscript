@@ -5,7 +5,11 @@ export interface ShellCommandOptions {
   platform?: Platform;
 }
 
-/** Pure. Relocated from the old Node CLI's clipboardFallback.ts — already platform-parametrized. */
+/**
+ * Pure. Relocated from the old Node CLI's clipboardFallback.ts — already platform-parametrized.
+ * Quotes mpvPath the same way url is quoted — mpvPath comes from GM-stored config (untreated as
+ * user-controlled, unvalidated input per CLAUDE.md), so it must not be spliced in bare.
+ */
 export function buildMpvShellCommand(
   url: string,
   timestampSeconds: number | null,
@@ -14,7 +18,9 @@ export function buildMpvShellCommand(
   const mpvPath = options.mpvPath ?? 'mpv';
   const isWindows = options.platform === 'windows';
   const startArg = timestampSeconds !== null ? ` --start=${timestampSeconds}` : '';
-  return isWindows ? `${mpvPath} "${url}"${startArg}` : `${mpvPath} '${url}'${startArg}`;
+  return isWindows
+    ? `"${mpvPath}" "${url}"${startArg}`
+    : `'${mpvPath}' '${url}'${startArg}`;
 }
 
 export interface ClipboardCopyResult {

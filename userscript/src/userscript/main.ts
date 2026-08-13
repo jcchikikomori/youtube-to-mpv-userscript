@@ -25,7 +25,9 @@ async function openInMpv(videoUrl: string, timestampSeconds: number | null): Pro
     showToast('Opening in MPV...', 'success', videoUrl);
   } catch (error) {
     if (error instanceof InvalidVideoInputError) {
-      console.error('[YouTube to MPV]', error.message);
+      // error.message embeds the raw input that failed validation — never logged, per this
+      // project's own rule against logging video URLs/ids to the console.
+      console.error('[YouTube to MPV] video source rejected the resolved URL as invalid');
       showToast('Failed to extract video URL', 'error');
       return;
     }

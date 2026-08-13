@@ -101,8 +101,11 @@ export class MpvHandlerClient {
       response = await this.fetchImpl(requestUrl, { signal: AbortSignal.timeout(this.timeoutMs) });
     } catch (error) {
       if (error instanceof Error && error.name === 'TimeoutError') {
+        // Message intentionally omits the query string (it can carry the video URL/timestamp)
+        // — never log that to the console. this.baseUrl + path identifies the request just as
+        // well for debugging without it.
         throw new MpvHandlerTimeoutError(
-          `mpv-handler did not respond within ${this.timeoutMs}ms (${requestUrl})`,
+          `mpv-handler did not respond within ${this.timeoutMs}ms (${this.baseUrl}${path})`,
           { cause: error },
         );
       }

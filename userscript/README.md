@@ -59,7 +59,7 @@ it just moves from "hand-write one file" to "let tsup produce one file." Writing
 normal ESM modules (this repo's existing TypeScript convention) means:
 
 - The DOM/UI code, the HTTP client, and the YouTube validation logic can be unit tested in
-  isolation (130 tests, `npm test`), instead of only being checkable by hand in a real browser.
+  isolation (132 tests, `npm test`), instead of only being checkable by hand in a real browser.
 - `MpvHandlerClient` reuses its existing `fetchImpl` injection seam for a
   `GM_xmlhttpRequest`-backed adapter (`userscript/gmFetch.ts`) instead of a raw `fetch()` — a
   page running on `https://` calling `http://127.0.0.1:38421` hits the browser's mixed-content

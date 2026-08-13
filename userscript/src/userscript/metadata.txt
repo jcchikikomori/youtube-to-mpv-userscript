@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Steam to MPV (YouTube)
 // @namespace    https://github.com/jcchikikomori/stream-to-mpv
-// @version      0.3.0
+// @version      0.4.0
 // @description  Open YouTube videos directly in MPV media player via system protocol handlers
 // @author       John Cyrill Corsanes
 // @match        https://www.youtube.com/*
@@ -10,6 +10,8 @@
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
+// @connect      127.0.0.1
+// @connect      localhost
 // @run-at       document-idle
 // @license      MIT
 // @updateURL    https://raw.githubusercontent.com/jcchikikomori/stream-to-mpv/main/userscript/dist/youtube-to-mpv.user.js
