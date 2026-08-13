@@ -50,14 +50,20 @@ describe('showToast', () => {
     expect(document.getElementById('mpv-toast')?.style.background).toBe('#333');
   });
 
-  it('copies the message via the Copy button', () => {
+  it('omits the Copy button when no copyText is given', () => {
+    showToast('Opening in MPV...', 'success');
+
+    expect(document.querySelector('#mpv-toast button')).toBeNull();
+  });
+
+  it('copies the explicit copyText via the Copy button, not the displayed message', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
 
-    showToast('mpv url', 'success');
+    showToast('Opening in MPV...', 'success', 'https://www.youtube.com/watch?v=abc');
     const copyBtn = document.querySelector<HTMLButtonElement>('#mpv-toast button');
     copyBtn?.click();
 
-    expect(writeText).toHaveBeenCalledWith('mpv url');
+    expect(writeText).toHaveBeenCalledWith('https://www.youtube.com/watch?v=abc');
   });
 });

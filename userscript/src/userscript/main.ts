@@ -22,7 +22,7 @@ const youtubeSource = new YoutubeSource(client);
 async function openInMpv(videoUrl: string, timestampSeconds: number | null): Promise<void> {
   try {
     await youtubeSource.open(videoUrl, { timestampSeconds });
-    showToast('Opening in MPV...', 'success');
+    showToast('Opening in MPV...', 'success', videoUrl);
   } catch (error) {
     if (error instanceof InvalidVideoInputError) {
       console.error('[YouTube to MPV]', error.message);
@@ -36,7 +36,7 @@ async function openInMpv(videoUrl: string, timestampSeconds: number | null): Pro
         platform: getPlatform(navigator.platform),
       });
       const { copied } = await copyToClipboard(command);
-      showToast(copied ? `Handler offline. Copied: ${command}` : `Run: ${command}`, 'warning');
+      showToast(copied ? `Handler offline. Copied: ${command}` : `Run: ${command}`, 'warning', command);
       return;
     }
     throw error;

@@ -2,8 +2,14 @@ export type ToastType = 'success' | 'warning' | 'error';
 
 const TOAST_ID = 'mpv-toast';
 
-/** Ported 1:1 from the original userscript. Dark-mode aware, with a manual Copy button. */
-export function showToast(message: string, type: ToastType): void {
+/**
+ * Dark-mode aware. `copyText`, when given, adds a manual Copy button for it — pass the actual
+ * payload (a video URL, an mpv shell command) explicitly rather than the displayed message: the
+ * original script tried to strip a prefix off `message` to recover it, but that prefix never
+ * matched any message actually shown, so the button always copied the whole sentence verbatim
+ * (e.g. copying "Opening in MPV..." itself instead of the video URL).
+ */
+export function showToast(message: string, type: ToastType, copyText?: string): void {
   document.getElementById(TOAST_ID)?.remove();
 
   const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -42,31 +48,33 @@ export function showToast(message: string, type: ToastType): void {
   text.textContent = message;
   toast.appendChild(text);
 
-  const copyBtn = document.createElement('button');
-  copyBtn.textContent = 'Copy';
-  copyBtn.style.cssText = `
-    background: ${btnBg};
-    border: 1px solid ${btnBorder};
-    color: ${btnColor};
-    padding: 4px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-  `;
-  copyBtn.onclick = () => {
-    navigator.clipboard
-      .writeText(message.replace('Copied! Paste in terminal: ', ''))
-      .then(() => {
-        copyBtn.textContent = 'Copied!';
-        setTimeout(() => {
-          copyBtn.textContent = 'Copy';
-        }, 1000);
-      })
-      .catch(() => {
-        // Best-effort manual copy button — nothing useful to do if the clipboard API itself fails.
-      });
-  };
-  toast.appendChild(copyBtn);
+  if (copyText !== undefined) {
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = 'Copy';
+    copyBtn.style.cssText = `
+      background: ${btnBg};
+      border: 1px solid ${btnBorder};
+      color: ${btnColor};
+      padding: 4px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    `;
+    copyBtn.onclick = () => {
+      navigator.clipboard
+        .writeText(copyText)
+        .then(() => {
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => {
+            copyBtn.textContent = 'Copy';
+          }, 1000);
+        })
+        .catch(() => {
+          // Best-effort manual copy button — nothing useful to do if the clipboard API itself fails.
+        });
+    };
+    toast.appendChild(copyBtn);
+  }
 
   document.body.appendChild(toast);
   setTimeout(() => {
