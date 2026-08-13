@@ -7,12 +7,12 @@ import type { CookieEntry } from '../baseline/types.js';
  * versa for twitchCookies.ts. If you're adding cookie support for another platform, write that
  * platform its own equivalent of this file — don't parametrize this one.
  *
- * Two domains, both still exclusively "the YouTube platform's own auth": YouTube's actual
- * session/identity cookies (SID, SAPISID, LOGIN_INFO, etc.) are set on the .google.com apex
- * domain, not .youtube.com — a youtube.com-only export misses them, and a member-only video
- * fails exactly as if no cookies had been sent at all (yt-dlp gets a cookie file, but not the
- * one that actually authenticates). YouTube does mirror some of its own session state onto
- * .youtube.com too, so both are read and merged into one export.
+ * Two domains, both still exclusively "the YouTube platform's own auth": confirmed live (real
+ * Tampermonkey install, member-only video) that the essential session/identity cookies (SID,
+ * APISID, SAPISID, __Secure-1PAPISID, __Secure-3PAPISID) come back on .youtube.com itself, with
+ * the correct leading-dot (subdomain-wide) domain — youtube.com alone is sufficient for that
+ * account. google.com is still read and merged in as a defensive fallback (some accounts/consent
+ * flows may only mirror session state there), even though it resolved empty in that live test.
  */
 const YOUTUBE_COOKIE_DOMAINS = ['youtube.com', 'google.com'];
 

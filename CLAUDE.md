@@ -142,10 +142,12 @@ browser via `GM_cookie.list()` — wired into **both** platforms, each with its 
 — never stored in a standing directory on disk. **Domain-scoped per platform, deliberately never
 combined**: `twitchCookies.ts` hardcodes `GM_cookie.list({ domain: 'twitch.tv' })`.
 `youtubeCookies.ts` hardcodes two domains — `youtube.com` **and** `google.com`, merged into one
-export — because YouTube's actual session/identity cookies (`SID`, `SAPISID`, `LOGIN_INFO`,
-etc.) live on the `.google.com` apex domain, not `.youtube.com`; a youtube.com-only export
-builds a cookie file that yt-dlp receives but that doesn't actually authenticate anything,
-failing member-only content exactly as if no cookies had been sent. Neither file accepts a
+export. Confirmed live (real Tampermonkey install, member-only video) that the essential
+session/identity cookies (`SID`, `APISID`, `SAPISID`, `__Secure-1PAPISID`, `__Secure-3PAPISID`)
+come back on `.youtube.com` itself with the correct leading-dot domain — `youtube.com` alone was
+sufficient for that account. `google.com` is read too as a defensive fallback (some
+accounts/consent flows may only mirror session state there) even though it resolved empty in
+that test. Neither file accepts a
 domain parameter, specifically so neither call can accidentally read the other platform's
 cookies and blur the two platforms' cookie sets together — if you add cookie support for another
 platform, write it its own equivalent file, don't parametrize either of these.
@@ -504,7 +506,7 @@ settings/fullscreen buttons, so it shows/hides in lockstep with them.
 | Wrong video opens | URL extraction failed | Check `ytInitialPlayerResponse` fallback |
 | Twitch icon doesn't appear | Twitch auto-hides player controls until hover | Move the mouse over the player — the icon lives in the same auto-hide group as Twitch's own settings/fullscreen buttons |
 | Twitch right-click/kebab menu has no "Open in MPV" | Not a bug — Twitch has no custom context menu or per-card options menu (see "Twitch DOM Handling") | Use the player control-bar icon or `Ctrl+Shift+M` instead |
-| Members-only YouTube video fails in mpv (`Join this channel to get access...`) | No YouTube session cookies reached yt-dlp — either `GM_cookie` is unavailable, you're not logged in in the browser running the userscript, or `mpv-handler.py` predates cookie support | Confirm you're logged into YouTube in that browser; pull the latest `mpv-handler.py` if it predates this feature and restart the handler |
+| Members-only YouTube video fails in mpv (`Join this channel to get access...`) | Two distinct causes share this exact message. (1) No YouTube session cookies reached yt-dlp — `GM_cookie` unavailable, not logged in in that browser, or `mpv-handler.py` predates cookie support. (2) Cookies *are* valid and correctly forwarded, but yt-dlp itself can't satisfy a YouTube PO (Proof-of-Origin) token experiment for that specific video and mis-reports the resulting failure as this same membership error — confirmed live via `mpv-handler.log`'s `--ytdl-raw-options=cookies=...` line showing a correct cookie file, and `yt-dlp -v`'s own debug output showing `Detected experiment to bind GVS PO Token to video ID for web client`. This is a yt-dlp/YouTube anti-bot issue, outside this project | For (1): confirm login, pull the latest `mpv-handler.py`, restart the handler. For (2): needs a PO token provider plugin for yt-dlp (e.g. `bgutil-ytdlp-pot-provider`) — not something this project's code can fix; try a non-live member-only VOD first to check whether it's specific to that video's experiment cohort |
 
 ## See Also
 
