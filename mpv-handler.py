@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 PORT = 38421
+TIMESTAMP_RE = re.compile(r"^\d+(\.\d+)?$")
 LOG_PATH = os.path.join(tempfile.gettempdir(), "mpv-handler.log")
 
 logger = logging.getLogger("mpv-handler")
@@ -75,6 +77,14 @@ class MpvHandler(BaseHTTPRequestHandler):
             url = params["url"][0]
             logger.info("Play request: %s", url)
 
+            mpv_args = [url]
+            raw_timestamp = params.get("t", [None])[0]
+            if raw_timestamp:
+                if TIMESTAMP_RE.match(raw_timestamp):
+                    mpv_args.append(f"--start={raw_timestamp}")
+                else:
+                    logger.warning("Ignoring invalid timestamp: %s", raw_timestamp)
+
             if not MPV_PATH:
                 logger.error("mpv binary not found, cannot launch")
                 self.send_response(500)
@@ -85,9 +95,9 @@ class MpvHandler(BaseHTTPRequestHandler):
                 return
 
             try:
-                logger.debug("Launching: %s %s", MPV_PATH, url)
+                logger.debug("Launching: %s %s", MPV_PATH, " ".join(mpv_args))
                 proc = subprocess.Popen(
-                    [MPV_PATH, url],
+                    [MPV_PATH, *mpv_args],
                     stdout=self._mpv_log_handle(),
                     stderr=subprocess.STDOUT,
                 )

@@ -25,6 +25,7 @@ youtube-to-mpv.user.js   ← Userscript (browser)
 ├── Local handler communication (GM_xmlhttpRequest)
 ├── Clipboard fallback (if handler offline)
 ├── UI injection (icon in player control bar)
+├── Native menu injection (player right-click menu, row kebab popup)
 ├── Toast notification (dark mode aware)
 └── SPA navigation detection (MutationObserver)
 
@@ -105,6 +106,7 @@ Expose these as `@grant` GM_* values with defaults:
 | `mpvPath` | `mpv` | Path to MPV binary (auto-detected by handler) |
 | `showButton` | `true` | Show icon in player controls |
 | `autoPlaylist` | `false` | (Reserved for future use) |
+| `enableNativeMenuItems` | `true` | Show "Open in MPV" in the player right-click menu and row kebab ("⋮") menus |
 
 ### Keyboard Shortcuts
 
@@ -132,6 +134,32 @@ function injectButton() {
   });
 
   controlBar.prepend(btn);
+}
+```
+
+### Injecting into YouTube's native menus
+
+Right-clicking the player and clicking a row's "⋮" kebab both open YouTube's
+**own** DOM popups (not the browser's native context menu), so items can be
+appended to them. Both popups are reused/toggled rather than recreated per
+open, so guard with a `data-mpv-injected`-style marker and feature-detect via
+visible item text rather than assuming a fixed child count. YouTube currently
+ships two different component systems for the kebab popup depending on
+page/experiment (legacy `ytd-menu-popup-renderer` vs newer
+`yt-list-view-model`) — match on both.
+
+```javascript
+function maybeInjectContextMenuItems() {
+  const panel = document.querySelector('.ytp-contextmenu .ytp-panel-menu');
+  if (!panel || panel.dataset.mpvInjected) return;
+  if (!/copy video url/i.test(panel.textContent)) return; // not the video's menu (e.g. an ad)
+
+  panel.dataset.mpvInjected = 'true';
+  panel.appendChild(buildContextMenuItem('Open in MPV', () => openInMpv()));
+
+  // YouTube sizes the panel's height once, at open time — items appended
+  // afterwards need the height re-applied or they overflow into a scrollbar.
+  growContextMenuToFit(panel);
 }
 ```
 
@@ -274,11 +302,14 @@ This userscript runs in a privileged context with access to `GM_*` APIs. Apply t
 - Verify icon appears in player controls, click opens mpv.
 - Test keyboard shortcut `Ctrl+Shift+M`.
 - Test notification colors in light and dark mode.
+- Verify the player right-click menu ("Open in MPV" / "Open in MPV at current time") and the row kebab ("⋮") menu ("Open in MPV") on home/search/sidebar rows.
 - No automated test framework — this is a userscript, tested via browser developer tools.
 
 ### Test Video
 
 Use `https://www.youtube.com/watch?v=eYT5mlLPS0Q` for testing — confirmed working URL with 3:23 duration. The player control bar is present and the video loads correctly.
+
+**Caveat**: skip any pre-roll/mid-roll ad before testing the player right-click menu. During an ad, YouTube shows a reduced context menu without "Copy video URL" items — the feature-detection in `maybeInjectContextMenuItems` correctly (and intentionally) skips injecting into that reduced menu, so it can look like the feature is missing when it's actually just not the real video's menu yet.
 
 ## Platform-Specific Notes
 

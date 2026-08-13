@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         YouTube to MPV
 // @namespace    https://github.com/your-username/youtube-to-mpv-userscript
-// @version      0.1.0
+// @version      0.2.0
 // @description  Open YouTube videos directly in MPV media player via system protocol handlers
 // @author       John Cyrill Corsanes
-// @match        https://www.youtube.com/watch*
-// @match        https://youtube.com/watch*
+// @match        https://www.youtube.com/*
+// @match        https://youtube.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
@@ -26,6 +26,7 @@
     mpvPath: 'mpv',
     showButton: true,
     autoPlaylist: false,
+    enableNativeMenuItems: true,
   };
 
   function getConfig(key) {
@@ -103,8 +104,7 @@
     return null;
   }
 
-  function getVideoUrl() {
-    const videoId = getVideoId();
+  function getVideoUrl(videoId = getVideoId()) {
     if (!videoId) return null;
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -116,44 +116,92 @@
     return urlMatch ? urlMatch[1] : null;
   }
 
+  /**
+   * Extract a validated video ID from a (possibly relative) link href,
+   * e.g. the anchor inside a thumbnail/row on a listing page.
+   */
+  function extractVideoIdFromHref(href) {
+    if (!href) return null;
+
+    try {
+      const videoId = new URL(href, window.location.origin).searchParams.get('v');
+      return videoId && isValidVideoId(videoId) ? videoId : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Parse YouTube's `t` timestamp param off a link href.
+   * Supports plain seconds ("t=699") and the legacy duration form
+   * ("t=1h2m3s", "t=90s", "t=1m30s"). Returns null (not 0) when absent.
+   */
+  function parseTimestampParam(href) {
+    if (!href) return null;
+
+    let raw;
+    try {
+      raw = new URL(href, window.location.origin).searchParams.get('t');
+    } catch {
+      return null;
+    }
+    if (!raw) return null;
+
+    if (/^\d+$/.test(raw)) {
+      return parseInt(raw, 10);
+    }
+
+    const match = raw.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i);
+    if (!match || !(match[1] || match[2] || match[3])) return null;
+
+    const hours = parseInt(match[1] || '0', 10);
+    const minutes = parseInt(match[2] || '0', 10);
+    const seconds = parseInt(match[3] || '0', 10);
+    return hours * 3600 + minutes * 60 + seconds;
+  }
+
   // ==================== MPV Launch ====================
 
   const HANDLER_URL = 'http://127.0.0.1:38421';
 
-  async function openInMpv() {
-    const videoUrl = getVideoUrl();
+  async function openInMpv(videoUrl = getVideoUrl(), timestamp = null) {
     if (!videoUrl) {
       console.error('[YouTube to MPV] Could not extract video URL');
       showToast('Failed to extract video URL', 'error');
       return;
     }
 
+    const playUrl = timestamp !== null
+      ? `${HANDLER_URL}/play?url=${encodeURIComponent(videoUrl)}&t=${timestamp}`
+      : `${HANDLER_URL}/play?url=${encodeURIComponent(videoUrl)}`;
+
     try {
       GM_xmlhttpRequest({
         method: 'GET',
-        url: `${HANDLER_URL}/play?url=${encodeURIComponent(videoUrl)}`,
+        url: playUrl,
         onload: (response) => {
           if (response.status === 200) {
             showToast('Opening in MPV...', 'success');
           } else {
-            fallbackToClipboard(videoUrl);
+            fallbackToClipboard(videoUrl, timestamp);
           }
         },
         onerror: () => {
-          fallbackToClipboard(videoUrl);
+          fallbackToClipboard(videoUrl, timestamp);
         }
       });
     } catch {
-      fallbackToClipboard(videoUrl);
+      fallbackToClipboard(videoUrl, timestamp);
     }
   }
 
-  async function fallbackToClipboard(videoUrl) {
+  async function fallbackToClipboard(videoUrl, timestamp = null) {
     const mpvPath = getConfig('mpvPath');
     const isWindows = getPlatform() === 'windows';
+    const startArg = timestamp !== null ? ` --start=${timestamp}` : '';
     const command = isWindows
-      ? `${mpvPath} "${videoUrl}"`
-      : `${mpvPath} '${videoUrl}'`;
+      ? `${mpvPath} "${videoUrl}"${startArg}`
+      : `${mpvPath} '${videoUrl}'${startArg}`;
 
     try {
       await navigator.clipboard.writeText(command);
@@ -230,6 +278,15 @@
     }, 5000);
   }
 
+  // ==================== Icons ====================
+
+  const MPV_ICON_PATHS = `
+    <path d="M8 5v14l11-7z"/>
+    <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42L17.59 5H14V3z" fill-opacity="0.7"/>
+  `;
+  const MPV_ICON_SVG_WHITE = `<svg height="24" width="24" viewBox="0 0 24 24" fill="white">${MPV_ICON_PATHS}</svg>`;
+  const MPV_ICON_SVG_CURRENT = `<svg height="24" width="24" viewBox="0 0 24 24" fill="currentColor">${MPV_ICON_PATHS}</svg>`;
+
   // ==================== UI Injection ====================
 
   const BUTTON_ID = 'mpv-open-btn';
@@ -246,12 +303,7 @@
     btn.id = BUTTON_ID;
     btn.className = 'ytp-button';
     btn.title = 'Open in MPV (Ctrl+Shift+M)';
-    btn.innerHTML = `
-      <svg height="24" width="24" viewBox="0 0 24 24" fill="white">
-        <path d="M8 5v14l11-7z"/>
-        <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42L17.59 5H14V3z" fill-opacity="0.7"/>
-      </svg>
-    `;
+    btn.innerHTML = MPV_ICON_SVG_WHITE;
     btn.style.cssText = `
       padding: 0 8px;
       min-width: auto;
@@ -270,6 +322,140 @@
   function removeButton() {
     const btn = document.getElementById(BUTTON_ID);
     if (btn) btn.remove();
+  }
+
+  // ==================== Native Menu Injection ====================
+  //
+  // YouTube renders two menus as its own DOM (not the browser's native
+  // context menu), so a userscript can add items to them:
+  //   - Right-clicking the player opens `.ytp-contextmenu`.
+  //   - Clicking a video row's "⋮" kebab opens a shared `ytd-popup-container`.
+  // YouTube currently ships two different component systems for the kebab
+  // popup depending on page/experiment (legacy `ytd-menu-popup-renderer` vs
+  // newer `yt-list-view-model`), so detection below matches on visible item
+  // text / aria-label rather than a single hardcoded tag family.
+
+  const ROW_SELECTOR = 'ytd-video-renderer, ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-playlist-video-renderer, ytd-grid-video-renderer, yt-lockup-view-model';
+
+  // Video ID/timestamp for whichever row's kebab was just clicked, captured
+  // before the (shared, singleton) popup opens.
+  let pendingRowTarget = null;
+
+  function getRowAnchorHref(row) {
+    const anchor = row.querySelector('a#thumbnail, a[href*="/watch"]');
+    return anchor ? anchor.getAttribute('href') : null;
+  }
+
+  document.addEventListener('click', (e) => {
+    const kebab = e.target.closest('button[aria-label="Action menu" i], button[aria-label="More actions" i]');
+    if (!kebab) return;
+
+    const row = kebab.closest(ROW_SELECTOR);
+    const href = row ? getRowAnchorHref(row) : null;
+    const videoId = href ? extractVideoIdFromHref(href) : null;
+
+    pendingRowTarget = videoId ? { videoId, timestamp: parseTimestampParam(href) } : null;
+  }, true);
+
+  /** Escape closes both `.ytp-contextmenu` and the popup container's dialog. */
+  function dismissOpenMenus() {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  }
+
+  function buildContextMenuItem(label, onClick) {
+    const item = document.createElement('div');
+    item.className = 'ytp-menuitem';
+    item.setAttribute('role', 'menuitem');
+    item.tabIndex = 0;
+    item.innerHTML = `
+      <div class="ytp-menuitem-icon">${MPV_ICON_SVG_CURRENT}</div>
+      <div class="ytp-menuitem-label"></div>
+      <div class="ytp-menuitem-content"></div>
+    `;
+    item.querySelector('.ytp-menuitem-label').textContent = label;
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onClick();
+    });
+    return item;
+  }
+
+  /**
+   * YouTube sizes `.ytp-contextmenu` (and its `.ytp-panel`/`.ytp-panel-menu`
+   * wrappers) with an inline height computed once, at open time, from the
+   * original item count. Items appended afterwards would otherwise overflow
+   * into an internal scrollbar instead of growing the panel, so re-measure
+   * and re-apply the height to all three after inserting our items.
+   */
+  function growContextMenuToFit(panel) {
+    const panelWrap = panel.closest('.ytp-panel');
+    const menu = panel.closest('.ytp-contextmenu');
+    const newHeight = `${panel.scrollHeight}px`;
+    panel.style.height = newHeight;
+    if (panelWrap) panelWrap.style.height = newHeight;
+    if (menu) menu.style.height = newHeight;
+  }
+
+  function maybeInjectContextMenuItems() {
+    if (!getConfig('enableNativeMenuItems')) return;
+
+    const panel = document.querySelector('.ytp-contextmenu .ytp-panel-menu');
+    if (!panel || panel.dataset.mpvInjected) return;
+    if (!/copy video url/i.test(panel.textContent)) return;
+
+    panel.dataset.mpvInjected = 'true';
+
+    panel.appendChild(buildContextMenuItem('Open in MPV', () => {
+      openInMpv();
+      dismissOpenMenus();
+    }));
+
+    panel.appendChild(buildContextMenuItem('Open in MPV at current time', () => {
+      const video = document.querySelector('video');
+      const currentTime = video ? Math.floor(video.currentTime) : 0;
+      openInMpv(getVideoUrl(), currentTime > 0 ? currentTime : null);
+      dismissOpenMenus();
+    }));
+
+    growContextMenuToFit(panel);
+  }
+
+  function buildRowMenuItem(label, onClick) {
+    const item = document.createElement('div');
+    item.className = 'mpv-row-menuitem';
+    item.setAttribute('role', 'menuitem');
+    item.tabIndex = 0;
+    item.innerHTML = MPV_ICON_SVG_CURRENT;
+
+    const text = document.createElement('span');
+    text.textContent = label;
+    item.appendChild(text);
+
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onClick();
+    });
+    return item;
+  }
+
+  function maybeInjectRowMenuItem() {
+    if (!getConfig('enableNativeMenuItems')) return;
+    if (!pendingRowTarget) return;
+
+    const popup = document.querySelector('ytd-popup-container');
+    if (!popup) return;
+
+    const listbox = popup.querySelector('tp-yt-paper-listbox#items, yt-list-view-model');
+    if (!listbox || listbox.dataset.mpvInjected) return;
+    if (!/add to queue|save to playlist/i.test(listbox.textContent)) return;
+
+    listbox.dataset.mpvInjected = 'true';
+
+    const { videoId, timestamp } = pendingRowTarget;
+    listbox.appendChild(buildRowMenuItem('Open in MPV', () => {
+      openInMpv(getVideoUrl(videoId), timestamp);
+      dismissOpenMenus();
+    }));
   }
 
   // ==================== SPA Navigation Detection ====================
@@ -292,8 +478,14 @@
     }
   }
 
-  // MutationObserver for SPA navigation
-  const observer = new MutationObserver(handleUrlChange);
+  function handleMutations() {
+    handleUrlChange();
+    maybeInjectContextMenuItems();
+    maybeInjectRowMenuItem();
+  }
+
+  // MutationObserver for SPA navigation and native menu injection
+  const observer = new MutationObserver(handleMutations);
   observer.observe(document.body, { childList: true, subtree: true });
 
   // Also listen for popstate (back/forward navigation)
@@ -301,7 +493,7 @@
 
   // ==================== Menu Commands ====================
 
-  GM_registerMenuCommand('Open current video in MPV', openInMpv);
+  GM_registerMenuCommand('Open current video in MPV', () => openInMpv());
   GM_registerMenuCommand('Toggle button visibility', () => {
     const current = getConfig('showButton');
     setConfig('showButton', !current);
@@ -310,6 +502,9 @@
     } else {
       removeButton();
     }
+  });
+  GM_registerMenuCommand('Toggle MPV menu items', () => {
+    setConfig('enableNativeMenuItems', !getConfig('enableNativeMenuItems'));
   });
 
   // ==================== Initialize ====================
@@ -323,6 +518,29 @@
     @keyframes mpv-fade-out {
       from { opacity: 1; transform: translateX(-50%) translateY(0); }
       to { opacity: 0; transform: translateX(-50%) translateY(10px); }
+    }
+    .mpv-row-menuitem {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 16px;
+      font-size: 14px;
+      line-height: 20px;
+      cursor: pointer;
+      color: var(--yt-spec-text-primary, #0f0f0f);
+    }
+    .mpv-row-menuitem svg {
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .mpv-row-menuitem:hover {
+      background: rgba(0, 0, 0, 0.1);
+    }
+    @media (prefers-color-scheme: dark) {
+      .mpv-row-menuitem:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
     }
   `;
   document.head.appendChild(style);
