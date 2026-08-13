@@ -7,6 +7,7 @@ import {
   MpvHandlerTimeoutError,
   MpvHandlerUnreachableError,
 } from './errors.js';
+import { sanitizeCookiesForWire } from './cookies.js';
 import { assertLoopbackUrl } from './loopback.js';
 import {
   HealthResponseSchema,
@@ -55,9 +56,14 @@ export class MpvHandlerClient {
   }
 
   /**
-   * Requests mpv-handler.py to launch mpv on the given URL. Validates timestampSeconds
-   * synchronously before any request is sent — deliberately stricter than the Python
+   * Requests mpv-handler.py to launch mpv on the given URL. Validates timestampSeconds and
+   * cookies synchronously before any request is sent — deliberately stricter than the Python
    * handler, which silently logs-and-ignores an invalid `t` and still returns 200.
+   *
+   * Always POSTs a JSON body (never a GET query string): cookies must never end up in a URL,
+   * where they'd be exposed to request-line logging (this client's own, any proxy's, or
+   * mpv-handler.py's) — see cookies.ts. The video URL travels the same way for consistency,
+   * even on the no-cookies path.
    */
   async play(url: string, options: PlayOptions = {}): Promise<PlayResponse> {
     const timestampSeconds = options.timestampSeconds ?? null;
@@ -69,10 +75,15 @@ export class MpvHandlerClient {
         `timestampSeconds must be a finite number >= 0, got ${String(timestampSeconds)}`,
       );
     }
+    const cookies = sanitizeCookiesForWire(options.cookies);
 
-    return this.request(
+    return this.requestJson(
       '/play',
-      { url, t: timestampSeconds !== null ? String(timestampSeconds) : undefined },
+      {
+        url,
+        t: timestampSeconds !== null ? String(timestampSeconds) : undefined,
+        cookies: cookies ?? undefined,
+      },
       PlayResponseSchema,
     );
   }
@@ -89,21 +100,48 @@ export class MpvHandlerClient {
     return `${this.baseUrl}${path}${queryString}`;
   }
 
+  /** GET with the query string in the URL. Used only by health() — never a body-carrying request. */
   private async request<T>(
     path: string,
     query: Record<string, string | undefined>,
     schema: Validator<T>,
   ): Promise<T> {
-    const requestUrl = this.buildRequestUrl(path, query);
+    const response = await this.fetch(this.buildRequestUrl(path, query), path, {
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    return this.parseResponse(response, schema);
+  }
 
-    let response: FetchResponseLike;
+  /**
+   * POST with a JSON body. Used by play() so cookies/URL never appear in a query string —
+   * see play()'s own doc comment for why that matters.
+   */
+  private async requestJson<T>(
+    path: string,
+    body: Record<string, unknown>,
+    schema: Validator<T>,
+  ): Promise<T> {
+    const response = await this.fetch(`${this.baseUrl}${path}`, path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    return this.parseResponse(response, schema);
+  }
+
+  private async fetch(
+    requestUrl: string,
+    path: string,
+    init: NonNullable<Parameters<FetchLike>[1]>,
+  ): Promise<FetchResponseLike> {
     try {
-      response = await this.fetchImpl(requestUrl, { signal: AbortSignal.timeout(this.timeoutMs) });
+      return await this.fetchImpl(requestUrl, init);
     } catch (error) {
       if (error instanceof Error && error.name === 'TimeoutError') {
-        // Message intentionally omits the query string (it can carry the video URL/timestamp)
-        // — never log that to the console. this.baseUrl + path identifies the request just as
-        // well for debugging without it.
+        // Message intentionally omits the query string/body (either can carry the video
+        // URL/cookies) — never log that to the console. this.baseUrl + path identifies the
+        // request just as well for debugging without it.
         throw new MpvHandlerTimeoutError(
           `mpv-handler did not respond within ${this.timeoutMs}ms (${this.baseUrl}${path})`,
           { cause: error },
@@ -113,7 +151,9 @@ export class MpvHandlerClient {
         cause: error,
       });
     }
+  }
 
+  private async parseResponse<T>(response: FetchResponseLike, schema: Validator<T>): Promise<T> {
     const text = await response.text();
     let rawBody: unknown;
     try {

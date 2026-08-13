@@ -35,7 +35,7 @@ describe('YoutubeSource', () => {
     const result = await source.open(VALID_ID, { timestampSeconds: 90 });
 
     expect(result).toEqual({ resolvedUrl: WATCH_URL, timestampSeconds: 90 });
-    expect(play).toHaveBeenCalledWith(WATCH_URL, { timestampSeconds: 90 });
+    expect(play).toHaveBeenCalledWith(WATCH_URL, { timestampSeconds: 90, cookies: null });
   });
 
   it('open() by full URL goes through the identical path as by id', async () => {
@@ -45,7 +45,7 @@ describe('YoutubeSource', () => {
     const result = await source.open(WATCH_URL);
 
     expect(result).toEqual({ resolvedUrl: WATCH_URL, timestampSeconds: null });
-    expect(play).toHaveBeenCalledWith(WATCH_URL, { timestampSeconds: null });
+    expect(play).toHaveBeenCalledWith(WATCH_URL, { timestampSeconds: null, cookies: null });
   });
 
   it('open() rejects invalid input without calling the client', async () => {

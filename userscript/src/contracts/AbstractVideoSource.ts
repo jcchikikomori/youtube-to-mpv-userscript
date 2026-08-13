@@ -25,7 +25,8 @@ export abstract class AbstractVideoSource implements VideoSource {
       throw new InvalidVideoInputError(`${this.platform}: not a valid URL or ID: ${input}`);
     }
     const timestampSeconds = options.timestampSeconds ?? null;
-    await this.client.play(resolvedUrl, { timestampSeconds });
+    const cookies = options.cookies ?? null;
+    await this.client.play(resolvedUrl, { timestampSeconds, cookies });
     return { resolvedUrl, timestampSeconds };
   }
 }

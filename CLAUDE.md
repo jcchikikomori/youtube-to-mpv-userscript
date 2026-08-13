@@ -24,7 +24,8 @@ userscript/                        ← TypeScript source + build (Node, dev-only
 │                                    platforms or the DOM
 ├── src/contracts/                   VideoSource interface + AbstractVideoSource template method
 ├── src/platforms/youtube/           YouTube URL/id validation + timestamp parsing
-├── src/platforms/twitch/            extension-point recipe only, no code yet
+├── src/platforms/twitch/            Twitch channel/VOD validation + timestamp parsing (library
+│                                    module only — no Twitch-page DOM bundle yet, see its README)
 ├── src/userscript/                  the actual browser entry point: DOM/menu injection,
 │                                    GM_xmlhttpRequest transport adapter, clipboard fallback
 └── dist/youtube-to-mpv.user.js      ← build output — THE distributed userscript, generated
@@ -33,7 +34,9 @@ userscript/                        ← TypeScript source + build (Node, dev-only
 mpv-handler.py                     ← Local server (system, all platforms)
 ├── HTTP server on 127.0.0.1:38421
 ├── Auto-detects mpv binary (shutil.which + platform-specific paths)
-├── /play?url=URL endpoint
+├── GET /play?url=URL&t=SECONDS — legacy, no-cookies path (manual curl testing)
+├── POST /play {url, t, cookies} — primary path; cookies (if any) become a short-lived
+│   Netscape-format temp file for yt-dlp, deleted right after mpv exits (never persisted)
 ├── Launches mpv with the URL
 └── Health check endpoint
 
@@ -81,7 +84,12 @@ a build step. See `userscript/README.md` for the full package layout and build/t
 
 The script communicates with a local Python handler via HTTP:
 
-1. **Primary**: `GM_xmlhttpRequest` to `http://127.0.0.1:38421/play?url=VIDEO_URL`
+1. **Primary**: `GM_xmlhttpRequest` POSTs a JSON body (`{url, t, cookies}`) to
+   `http://127.0.0.1:38421/play` — never a GET query string, since a `cookies` payload must
+   never end up somewhere it'd be logged (a request line, shell history, a proxy's access log).
+   `cookies` is optional and omitted entirely for anonymous playback. A legacy `GET
+   /play?url=VIDEO_URL&t=SECONDS` (no cookies) still works on the handler side, for manual
+   `curl` testing — the shipped userscript itself always POSTs.
 2. **Fallback**: Copies `mpv <url>` to clipboard if handler is offline
 
 The handler approach is preferred because:
@@ -92,6 +100,17 @@ The handler approach is preferred because:
 - No clipboard permission issues
 
 The clipboard fallback ensures the script still works if the handler isn't running.
+
+**Cookies (authenticated/subscriber-only playback)**: forwarded live, per request, from the
+browser (via `GM_cookie.list()` in the platform-specific bundle — not yet built for Twitch, see
+`userscript/src/platforms/twitch/README.md`) — never stored in a standing directory on disk.
+`mpv-handler.py` writes the `cookies` payload (if any) to a short-lived Netscape-format temp
+file under `<tempdir>/mpv-handler-cookies/`, passes it to yt-dlp via
+`--ytdl-raw-options=cookies=<path>`, and deletes it as soon as mpv exits (a background thread
+`wait()`s on the process; a startup + `atexit` sweep of that directory is the safety net for a
+crash/kill, since a killed daemon thread never runs its cleanup). `mpv-handler.py` isn't
+auto-updated the way the userscript is (no `@updateURL` equivalent) — pull the latest version
+locally to get cookie/Twitch support.
 
 ### Platform Detection
 
@@ -281,6 +300,18 @@ This userscript runs in a privileged context with access to `GM_*` APIs. Apply t
 - Sanitize any user-configured values (MPV path) before passing to command construction.
 - Validate URLs before opening — only allow `https://youtube.com/watch?v=...` patterns.
 - **The handler's base URL is checked against a literal loopback-hostname allowlist** (`userscript/src/baseline/loopback.ts`), never resolved via DNS (a resolve-then-check would open a DNS-rebinding/TOCTOU gap). `GM_xmlhttpRequest` (`userscript/src/userscript/gmFetch.ts`) follows redirects by default and isn't subject to the browser's own cross-origin checks, so the response's *final* URL is re-checked against the same allowlist before its body is trusted — a redirect can't be used to turn this privileged transport into an SSRF gadget against another local/internal address.
+- **Cookie payloads are validated on both ends, never trusted as-is.** TS side:
+  `userscript/src/baseline/cookies.ts`'s `sanitizeCookiesForWire` strips any field outside a
+  fixed allowlist (data minimization), caps entry count and per-field length, and rejects a
+  literal tab/newline in any field before it's ever sent. Python side: `mpv-handler.py`'s
+  `validate_cookies_payload`/`parse_play_request_body` re-enforce the same limits independently
+  (the handler's `/play` endpoint is reachable by anything on localhost, not only this
+  userscript) — a tab/newline is rejected because it would corrupt the Netscape cookie file's
+  tab-separated line structure, which is a real injection vector even though the file is never
+  passed through a shell (`subprocess.Popen` always uses argv-list form, no `shell=True`).
+  `Content-Length` is checked against a cap *before* `self.rfile.read()`, so a lying/huge header
+  can't be used to exhaust memory. Cookie values are never written to `logger.*` at any level —
+  only a count (`cookies=N`).
 
 ### Output Encoding
 
@@ -312,10 +343,16 @@ This userscript runs in a privileged context with access to `GM_*` APIs. Apply t
 - Test notification colors in light and dark mode.
 - Verify the player right-click menu ("Open in MPV" / "Open in MPV at current time") and the row kebab ("⋮") menu ("Open in MPV") on home/search/sidebar rows.
 - `userscript/` has a vitest suite (`npm test`, happy-dom) covering the HTTP client, YouTube
-  validation/timestamp parsing, and the parts of the DOM layer that don't depend on YouTube's
-  real markup (button add/remove, toast shape). It mocks `GM_*`/`fetch` — it proves those pieces
-  behave correctly in isolation, not that mpv actually launches from a real browser. Real
-  YouTube-DOM/menu-injection behavior (the bullets above) stays manual-browser-tested only.
+  and Twitch validation/timestamp parsing, cookie sanitization, and the parts of the DOM layer
+  that don't depend on YouTube's real markup (button add/remove, toast shape). It mocks
+  `GM_*`/`fetch` — it proves those pieces behave correctly in isolation, not that mpv actually
+  launches from a real browser. Real YouTube-DOM/menu-injection behavior (the bullets above)
+  stays manual-browser-tested only — the same applies to any future Twitch-page DOM bundle.
+- `test_mpv_handler.py` (repo root, stdlib `unittest` — run with `python3 -m unittest
+  test_mpv_handler`) covers `mpv-handler.py`'s cookie validation, Netscape-file generation, and
+  the POST `/play` HTTP contract end-to-end against a real (but `MPV_PATH`-stubbed) server
+  instance — including that a cookie temp file actually gets deleted after the launched process
+  exits.
 
 ### Test Video
 
@@ -374,6 +411,7 @@ Use `https://www.youtube.com/watch?v=eYT5mlLPS0Q` for testing — confirmed work
 | Handler offline | Service not running | `systemctl --user start mpv-handler` (Linux) or `.\start-handler.ps1` (Windows) |
 | mpv not found | Binary not in PATH | Install mpv or check `~/.local/bin` (Linux), `/opt/homebrew/bin` (macOS), or `%LOCALAPPDATA%\mpv` (Windows) |
 | mpv never launches on Windows, no error | Windows Security/Defender blocking `python.exe`/`mpv.exe` | Add project folder + mpv install folder to Windows Security exclusions; check `%TEMP%\mpv-handler.log` |
+| Cookies/Twitch feature seems missing | Local `mpv-handler.py` predates this change — it isn't auto-updated like the userscript | Pull the latest `mpv-handler.py` and restart the handler |
 | Toast not showing | CSS animation issue | Check for conflicting styles |
 | Wrong video opens | URL extraction failed | Check `ytInitialPlayerResponse` fallback |
 

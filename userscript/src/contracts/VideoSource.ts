@@ -1,5 +1,9 @@
+import type { CookieEntry } from '../baseline/types.js';
+
 export interface OpenOptions {
   timestampSeconds?: number | null;
+  /** Cookies to forward for authenticated/subscriber-only playback. Never persisted. */
+  cookies?: CookieEntry[] | null;
 }
 
 export interface OpenResult {

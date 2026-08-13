@@ -13,8 +13,30 @@ export interface FetchResponseLike {
 /** Minimal fetch-shaped transport function. See FetchResponseLike for why it's this narrow. */
 export type FetchLike = (
   url: string,
-  init?: { signal?: AbortSignal },
+  init?: {
+    signal?: AbortSignal;
+    method?: 'GET' | 'POST';
+    headers?: Record<string, string>;
+    body?: string;
+  },
 ) => Promise<FetchResponseLike>;
+
+/**
+ * One browser cookie, shaped to match Tampermonkey's GM_cookie.list() return value verbatim —
+ * the userscript-twitch bundle (not yet built) forwards that call's result straight through
+ * with no reformatting. Deliberately narrower than GM_cookie's full shape: fields like
+ * `session`/`sameSite`/`storeId` are never forwarded (data minimization — see
+ * sanitizeCookiesForWire in cookies.ts).
+ */
+export interface CookieEntry {
+  domain: string;
+  name: string;
+  value: string;
+  path?: string;
+  secure?: boolean;
+  httpOnly?: boolean;
+  expirationDate?: number | null;
+}
 
 export interface MpvHandlerClientOptions {
   /** Base URL of the mpv-handler.py server. Must be loopback unless allowNonLoopback is set. Default: 'http://127.0.0.1:38421'. */
@@ -33,6 +55,8 @@ export interface MpvHandlerClientOptions {
 export interface PlayOptions {
   /** Second to start playback at. Must be finite and >= 0. Omit/null to start from the beginning. */
   timestampSeconds?: number | null;
+  /** Cookies to forward for authenticated playback. Sent once per request, never persisted. */
+  cookies?: CookieEntry[] | null;
 }
 
 export type ValidationResult<T> = { success: true; data: T } | { success: false; error: { message: string } };

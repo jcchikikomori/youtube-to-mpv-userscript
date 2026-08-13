@@ -8,7 +8,8 @@ path on GitHub's raw content host).
 ```
 baseline/      -> talks to mpv-handler.py over HTTP, knows nothing about video platforms or the DOM
 contracts/     -> VideoSource interface + AbstractVideoSource template method
-platforms/     -> youtube/ (implemented), twitch/ (recipe only, see platforms/twitch/README.md)
+platforms/     -> youtube/ and twitch/ (both implemented as platform modules — no Twitch-page
+                  DOM bundle yet, see platforms/twitch/README.md for what's still open)
 userscript/    -> the actual browser entry point: DOM/menu injection, GM_xmlhttpRequest transport
                   adapter, clipboard fallback — wires baseline/contracts/platforms into main.ts
 ```
@@ -58,8 +59,8 @@ Tampermonkey userscripts must ship as one dependency-free file — that constrai
 it just moves from "hand-write one file" to "let tsup produce one file." Writing the source as
 normal ESM modules (this repo's existing TypeScript convention) means:
 
-- The DOM/UI code, the HTTP client, and the YouTube validation logic can be unit tested in
-  isolation (132 tests, `npm test`), instead of only being checkable by hand in a real browser.
+- The DOM/UI code, the HTTP client, and the YouTube/Twitch validation logic can be unit tested
+  in isolation (222 tests, `npm test`), instead of only being checkable by hand in a real browser.
 - `MpvHandlerClient` reuses its existing `fetchImpl` injection seam for a
   `GM_xmlhttpRequest`-backed adapter (`userscript/gmFetch.ts`) instead of a raw `fetch()` — a
   page running on `https://` calling `http://127.0.0.1:38421` hits the browser's mixed-content
@@ -69,25 +70,33 @@ normal ESM modules (this repo's existing TypeScript convention) means:
 
 ## Adding a new platform
 
-See [`src/platforms/twitch/README.md`](src/platforms/twitch/README.md) for the concrete,
-step-by-step recipe (written against Twitch specifically, as the next platform planned). In
-short: implement `VideoSource` (typically by extending `AbstractVideoSource`, which already
-provides `open()`), reusing the same `MpvHandlerClient`. Nothing under `src/baseline/` or
-`src/contracts/` needs to change. A second userscript bundle would get its own
-`src/userscript-<platform>/main.ts` entry and its own `tsup.config.ts` entry — the DOM/UI layer
-here is YouTube-page-specific and isn't meant to be shared across platforms.
+[`src/platforms/twitch/`](src/platforms/twitch/README.md) is a worked example: a platform
+module implementing `VideoSource` (by extending `AbstractVideoSource`, which already provides
+`open()`) reusing the same `MpvHandlerClient`, with zero changes needed under `src/baseline/` or
+`src/contracts/`. Its README documents what's still open for Twitch specifically (a
+Twitch-page DOM bundle, and wiring live browser cookies into it) — useful as a template for
+what a _module_ needs, versus what a full platform integration needs on top of that. A second
+userscript bundle gets its own `src/userscript-<platform>/main.ts` entry and its own
+`tsup.config.ts` entry — the DOM/UI layer here is YouTube-page-specific and isn't meant to be
+shared across platforms.
+
+Cookie forwarding for authenticated/subscriber-only playback is already plumbed all the way
+through `MpvHandlerClient`/`AbstractVideoSource`/`mpv-handler.py` (see `src/baseline/cookies.ts`
+and the repo root `CLAUDE.md`'s "MPV Launch Strategy" section) — a new platform module just
+needs to pass a `cookies` array into `open()`; the transport and handler already know what to
+do with it.
 
 ## Scripts
 
-| Script              | What it does                                                              |
-| ------------------- | -------------------------------------------------------------------------- |
-| `npm run build`     | Bundles `src/userscript/main.ts` to `dist/youtube-to-mpv.user.js` via tsup |
-| `npm run build:test`| Same, to `dist/youtube-to-mpv.test.user.js` — see Testing build above     |
-| `npm run typecheck` | `tsc --noEmit`                                                              |
-| `npm run lint`      | ESLint, including the `no-restricted-imports` guard against `child_process`|
-| `npm test`          | vitest (happy-dom) — mocked `GM_*`/`fetch`, no live handler or browser needed |
-| `npm run format`    | `prettier --check .`                                                       |
-| `npm run verify`    | typecheck && lint && test && build, in that order                          |
+| Script               | What it does                                                                  |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `npm run build`      | Bundles `src/userscript/main.ts` to `dist/youtube-to-mpv.user.js` via tsup    |
+| `npm run build:test` | Same, to `dist/youtube-to-mpv.test.user.js` — see Testing build above         |
+| `npm run typecheck`  | `tsc --noEmit`                                                                |
+| `npm run lint`       | ESLint, including the `no-restricted-imports` guard against `child_process`   |
+| `npm test`           | vitest (happy-dom) — mocked `GM_*`/`fetch`, no live handler or browser needed |
+| `npm run format`     | `prettier --check .`                                                          |
+| `npm run verify`     | typecheck && lint && test && build, in that order                             |
 
 ## Manual smoke test
 

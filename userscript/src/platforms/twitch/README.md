@@ -1,38 +1,39 @@
-# Twitch (planned, not implemented)
+# Twitch
 
-Twitch is already fully playable via mpv/yt-dlp — this module just hasn't been written yet.
-The baseline (`../../baseline/`) and contracts (`../../contracts/`) layers were designed so
-adding it requires **zero edits to either**. This file is the recipe for when it's time.
+The platform module (steps 1/3/4 below) is implemented — `TwitchSource` supports live channels
+(`twitch.tv/<channel>`) and VODs (`twitch.tv/videos/<id>`) and is unit-tested. What's still
+open is step 2 (an actual Twitch-page bundle) and forwarding live browser cookies into it for
+authenticated/subscriber-only playback — see "What's still open" below.
 
 ## Steps
 
-1. Create these files, mirroring `../youtube/`:
-   - `validation.ts` — Twitch equivalents of `isValidYoutubeUrl`/`extractYoutubeVideoId`. Twitch
-     channels/VODs/clips each have a different URL shape
-     (`twitch.tv/<channel>`, `twitch.tv/videos/<id>`, `clips.twitch.tv/<slug>`), so this will
-     likely need one extractor per shape rather than a single regex — same principle as
-     `youtube/validation.ts`'s single `extractIdFromParsedUrl` helper: **one** function every
-     other check derives from, so `supports()` and `resolveUrl()` can never disagree.
-   - `timestamp.ts` — Twitch VOD timestamps use their own format (`?t=1h2m3s` on VOD URLs is
-     close to YouTube's legacy form, but confirm against Twitch's actual query format before
-     assuming it's identical).
-   - `TwitchSource.ts` — `export class TwitchSource extends AbstractVideoSource`, implementing
-     `platform`, `supports()`, `resolveUrl()`, and optionally `parseTimestamp()`. `open()` is
-     inherited from `AbstractVideoSource` — do not reimplement it.
-   - `index.ts` — re-export `TwitchSource` and the validation/timestamp helpers, matching
-     `youtube/index.ts`.
-2. Wire it up: the current userscript (`src/userscript/main.ts`) only ever constructs a single
-   `YoutubeSource` directly — it's a single-site bundle, so there's nothing to dispatch between
-   and no `VideoSourceRegistry` in use there. A Twitch userscript would most likely be its own
-   bundle (own `src/userscript-twitch/` entry + its own `tsup.config.ts` entry, since the DOM/UI
-   layer is YouTube-page-specific), constructing its own `TwitchSource` the same way — reach for
-   `VideoSourceRegistry` only if something ever needs to dispatch between multiple platforms
-   from one entry point.
-3. Re-export it from the library root: one line in `src/index.ts`.
-4. Add `src/platforms/twitch/validation.test.ts`, `timestamp.test.ts`, `TwitchSource.test.ts`,
-   following the same shape as the YouTube module's tests (table-driven validation cases
-   including adversarial URLs, a fake `MpvHandlerClient` for `TwitchSource` tests — never a
-   real HTTP call).
+1. ~~Create these files, mirroring `../youtube/`~~ — done: `validation.ts`, `timestamp.ts`,
+   `TwitchSource.ts`, `index.ts`. Clips (`clips.twitch.tv/<slug>`) were left out of scope (not
+   asked for). `extractTwitchVodId` deliberately only recognizes the `/videos/<id>` URL form,
+   never a bare numeric string — a bare digit string is ambiguous with an all-digit channel
+   name (Twitch allows those), so accepting it would have broken the
+   `supports()`/`resolveUrl()` non-disagreement invariant.
+2. **Still open.** Wire it up in an actual Twitch-page userscript: `src/userscript/main.ts`
+   only ever constructs a single `YoutubeSource` directly — it's a single-site bundle. A Twitch
+   userscript needs its own bundle (`src/userscript-twitch/` entry + its own `tsup.config.ts`
+   entry, `metadata.txt` with `@match` for `twitch.tv` and a new `@grant GM_cookie`), plus the
+   actual "Open in MPV" button/menu-item DOM injection on Twitch's live player. This needs real
+   trial-and-error against Twitch's actual markup (the same way YouTube's own `dom.ts` did) and
+   a live browser session to verify — tracked as a follow-up issue, not done here.
+3. ~~Re-export it from the library root~~ — done, in `src/index.ts`.
+4. ~~Add tests~~ — done: `validation.test.ts`, `timestamp.test.ts`, `TwitchSource.test.ts`.
+
+## What's still open
+
+- **Twitch-page bundle** (step 2 above) — deferred, needs a live browser session.
+- **Live cookie forwarding** — the transport (`MpvHandlerClient`/`AbstractVideoSource`) and
+  `mpv-handler.py` already support an optional `cookies` payload end-to-end (see
+  `src/baseline/cookies.ts`), so subscriber-only content can play once something supplies
+  cookies. What's missing is the Twitch-page side: calling `GM_cookie.list({ domain:
+'twitch.tv' })` and passing the result into `TwitchSource.open(input, { cookies })`. That
+  call belongs in the step-2 bundle above, not in this platform module — `GM_cookie` is a
+  browser/DOM-context API with uneven support across userscript managers, needs
+  feature-detection and a real page to verify against.
 
 ## What should NOT change
 

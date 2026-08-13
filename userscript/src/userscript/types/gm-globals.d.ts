@@ -11,8 +11,10 @@ interface GMXmlHttpRequestResponse {
 }
 
 interface GMXmlHttpRequestDetails {
-  method: 'GET';
+  method: 'GET' | 'POST';
   url: string;
+  headers?: Record<string, string>;
+  data?: string;
   onload?: (response: GMXmlHttpRequestResponse) => void;
   onerror?: (response: unknown) => void;
 }

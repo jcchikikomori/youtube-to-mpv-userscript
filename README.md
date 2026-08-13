@@ -127,8 +127,13 @@ nssm status mpv-handler
 
 ## How it works
 
-1. Userscript sends `GET http://127.0.0.1:38421/play?url=VIDEO_URL`
-2. Python handler auto-detects mpv and runs `mpv VIDEO_URL`
+1. Userscript POSTs `http://127.0.0.1:38421/play` with a JSON body `{url, t, cookies}` —
+   `cookies` is optional and only present for authenticated/subscriber-only playback (forwarded
+   live from the browser, never stored on disk; see `mpv-handler.py`'s cookie-handling code for
+   details). A legacy `GET /play?url=VIDEO_URL&t=SECONDS` (no cookies) still works too, mainly
+   useful for manual `curl` testing.
+2. Python handler auto-detects mpv and runs `mpv VIDEO_URL` (with `--ytdl-raw-options=cookies=<path>`
+   pointing at a short-lived temp file when cookies were sent — deleted right after mpv exits)
 3. Falls back to clipboard if handler is offline
 
 ## Notifications
