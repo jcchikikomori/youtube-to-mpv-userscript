@@ -22,7 +22,7 @@ A Tampermonkey userscript that adds a button to YouTube's player controls to ope
 ### 1. Install the userscript
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/)
-2. Click to install: [youtube-to-mpv.user.js](youtube-to-mpv.user.js)
+2. Click to install: [youtube-to-mpv.user.js](userscript/dist/youtube-to-mpv.user.js) (built from source in `userscript/` — see `userscript/README.md`)
 
 ### 2. Install yt-dlp/youtube-dl (required for mpv to play YouTube)
 

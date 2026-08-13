@@ -1,0 +1,36 @@
+{
+  "name": "userscript",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript source for youtube-to-mpv.user.js, bundled by tsup into dist/youtube-to-mpv.user.js. Baseline HTTP client + platform modules (YouTube now, Twitch planned) are shared, reusable pieces behind that build.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "build:test": "cross-env USERSCRIPT_BUILD=test tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.1",
+    "cross-env": "10.1.0",
+    "eslint": "10.8.1",
+    "eslint-config-prettier": "10.1.8",
+    "happy-dom": "20.11.2",
+    "prettier": "3.9.6",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.67.0",
+    "vitest": "4.1.10"
+  }
+}
