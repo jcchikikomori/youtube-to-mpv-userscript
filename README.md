@@ -6,6 +6,9 @@ A Tampermonkey userscript that adds a button to YouTube's player controls to ope
 
 - **One-click open**: Click the icon to open directly in MPV
 - **Keyboard shortcut**: Press `Ctrl+Shift+M`
+- **Right-click the player**: "Open in MPV" and "Open in MPV at current time" alongside YouTube's own "Copy video URL" items
+- **Right-click (kebab) any row**: "Open in MPV" from the "⋮" menu on home/search/sidebar rows — no need to open the video first
+- **Timestamp-aware**: Opening from a link with `?t=` (or "at current time" from the player) starts mpv at that point via `--start=`
 - **Auto-launch**: Starts mpv automatically via local handler
 - **Auto-detect**: Handler finds mpv binary automatically
 - **Fallback**: Copies command if handler is offline
@@ -89,7 +92,7 @@ The handler runs on `http://127.0.0.1:38421` and auto-launches mpv.
 
 ### 4. Use
 
-Navigate to any YouTube video and click the icon (▶↗) in the player controls.
+Navigate to any YouTube video and click the icon (▶↗) in the player controls — or right-click the player, or open any row's "⋮" menu on the home/search/sidebar and pick "Open in MPV".
 
 ## Usage
 
@@ -138,7 +141,7 @@ nssm status mpv-handler
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Shift+M` | Open in MPV |
+| `Ctrl+Shift+M` | Open in MPV at current time |
 
 ## Configuration
 
