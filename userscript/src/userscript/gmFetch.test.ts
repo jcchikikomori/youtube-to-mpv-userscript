@@ -45,6 +45,53 @@ describe('gmFetch', () => {
     expect(response.status).toBe(500);
   });
 
+  it('defaults to GET with no headers/body when init omits them', async () => {
+    const gmXhr = vi.fn((details: GMXmlHttpRequestDetails) => {
+      details.onload?.({
+        status: 200,
+        responseText: '{}',
+        finalUrl: 'http://127.0.0.1:38421/health',
+      });
+      return { abort: vi.fn() };
+    });
+    vi.stubGlobal('GM_xmlhttpRequest', gmXhr);
+
+    await gmFetch('http://127.0.0.1:38421/health');
+
+    expect(gmXhr).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'GET', url: 'http://127.0.0.1:38421/health' }),
+    );
+    expect(gmXhr.mock.calls[0]?.[0]).not.toHaveProperty('headers');
+    expect(gmXhr.mock.calls[0]?.[0]).not.toHaveProperty('data');
+  });
+
+  it('passes method, headers, and body through to GM_xmlhttpRequest for a POST', async () => {
+    const gmXhr = vi.fn((details: GMXmlHttpRequestDetails) => {
+      details.onload?.({
+        status: 200,
+        responseText: '{"status":"ok"}',
+        finalUrl: 'http://127.0.0.1:38421/play',
+      });
+      return { abort: vi.fn() };
+    });
+    vi.stubGlobal('GM_xmlhttpRequest', gmXhr);
+
+    await gmFetch('http://127.0.0.1:38421/play', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"url":"https://example.com"}',
+    });
+
+    expect(gmXhr).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'POST',
+        url: 'http://127.0.0.1:38421/play',
+        headers: { 'Content-Type': 'application/json' },
+        data: '{"url":"https://example.com"}',
+      }),
+    );
+  });
+
   it('rejects when the response arrives via a redirect to a non-loopback URL', async () => {
     vi.stubGlobal(
       'GM_xmlhttpRequest',

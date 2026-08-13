@@ -11,8 +11,10 @@ import type { FetchLike } from '../baseline/types.js';
 export const gmFetch: FetchLike = (url, init) =>
   new Promise((resolve, reject) => {
     const handle = GM_xmlhttpRequest({
-      method: 'GET',
+      method: init?.method ?? 'GET',
       url,
+      ...(init?.headers ? { headers: init.headers } : {}),
+      ...(init?.body !== undefined ? { data: init.body } : {}),
       onload: (response) => {
         // GM_xmlhttpRequest follows redirects by default and isn't subject to normal
         // cross-origin restrictions — re-check the *actual* response origin against the same

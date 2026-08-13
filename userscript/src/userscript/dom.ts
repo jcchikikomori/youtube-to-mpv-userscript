@@ -1,11 +1,18 @@
 import { isValidYoutubeVideoId, buildYoutubeWatchUrl } from '../platforms/youtube/validation.js';
 import { parseYoutubeTimestamp } from '../platforms/youtube/timestamp.js';
+import type { CookieEntry } from '../baseline/types.js';
 import { getConfig, setConfig } from './config.js';
+import { MPV_ICON_SVG_CURRENT, MPV_ICON_SVG_WHITE } from './icons.js';
 import { showToast } from './toast.js';
+import { getYoutubeCookies } from './youtubeCookies.js';
 
 export interface DomCallbacks {
   /** videoUrl is always a validated, canonical https://www.youtube.com/watch?v=<id> URL. */
-  openInMpv: (videoUrl: string, timestampSeconds: number | null) => void | Promise<void>;
+  openInMpv: (
+    videoUrl: string,
+    timestampSeconds: number | null,
+    cookies: CookieEntry[] | null,
+  ) => void | Promise<void>;
 }
 
 // ==================== Page scraping ====================
@@ -60,18 +67,21 @@ function parseTimestampParam(href: string | null): number | null {
   }
 }
 
-function dispatchOpen(
+async function dispatchOpen(
   callbacks: DomCallbacks,
   videoUrl: string | null,
   timestampSeconds: number | null,
-): void {
+): Promise<void> {
   if (!videoUrl) {
-    console.error('[YouTube to MPV] Could not extract video URL');
+    console.error('[Stream to MPV] Could not extract video URL');
     showToast('Failed to extract video URL', 'error');
     return;
   }
+  // Fetched fresh per open() call, scoped to youtube.com only (see youtubeCookies.ts) — never
+  // cached, never shared with the Twitch path.
+  const cookies = await getYoutubeCookies();
   // openInMpv (main.ts) handles all its own errors internally — fire-and-forget by design.
-  void callbacks.openInMpv(videoUrl, timestampSeconds);
+  void callbacks.openInMpv(videoUrl, timestampSeconds, cookies);
 }
 
 function currentPlaybackTime(): number | null {
@@ -79,15 +89,6 @@ function currentPlaybackTime(): number | null {
   const currentTime = video ? Math.floor(video.currentTime) : 0;
   return currentTime > 0 ? currentTime : null;
 }
-
-// ==================== Icons ====================
-
-const MPV_ICON_PATHS = `
-  <path d="M8 5v14l11-7z"/>
-  <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42L17.59 5H14V3z" fill-opacity="0.7"/>
-`;
-const MPV_ICON_SVG_WHITE = `<svg height="24" width="24" viewBox="0 0 24 24" fill="white">${MPV_ICON_PATHS}</svg>`;
-const MPV_ICON_SVG_CURRENT = `<svg height="24" width="24" viewBox="0 0 24 24" fill="currentColor">${MPV_ICON_PATHS}</svg>`;
 
 // ==================== UI Injection ====================
 
@@ -115,7 +116,7 @@ export function injectButton(callbacks: DomCallbacks): void {
 
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    dispatchOpen(callbacks, getVideoUrl(), null);
+    void dispatchOpen(callbacks, getVideoUrl(), null);
   });
 
   controlBar.prepend(btn);
@@ -153,7 +154,9 @@ function getRowAnchorHref(row: Element): string | null {
 
 /** Escape closes both `.ytp-contextmenu` and the popup container's dialog. */
 function dismissOpenMenus(): void {
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  document.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+  );
 }
 
 function buildContextMenuItem(label: string, onClick: () => void): HTMLElement {
@@ -201,14 +204,14 @@ function maybeInjectContextMenuItems(callbacks: DomCallbacks): void {
 
   panel.appendChild(
     buildContextMenuItem('Open in MPV', () => {
-      dispatchOpen(callbacks, getVideoUrl(), null);
+      void dispatchOpen(callbacks, getVideoUrl(), null);
       dismissOpenMenus();
     }),
   );
 
   panel.appendChild(
     buildContextMenuItem('Open in MPV at current time', () => {
-      dispatchOpen(callbacks, getVideoUrl(), currentPlaybackTime());
+      void dispatchOpen(callbacks, getVideoUrl(), currentPlaybackTime());
       dismissOpenMenus();
     }),
   );
@@ -251,7 +254,7 @@ function maybeInjectRowMenuItem(callbacks: DomCallbacks): void {
     buildRowMenuItem('Open in MPV', () => {
       const target = pendingRowTarget;
       if (!target) return;
-      dispatchOpen(callbacks, getVideoUrl(target.videoId), target.timestamp);
+      void dispatchOpen(callbacks, getVideoUrl(target.videoId), target.timestamp);
       dismissOpenMenus();
     }),
   );
@@ -366,12 +369,12 @@ export function initUserscriptUi(callbacks: DomCallbacks): void {
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === 'M') {
       e.preventDefault();
-      dispatchOpen(callbacks, getVideoUrl(), currentPlaybackTime());
+      void dispatchOpen(callbacks, getVideoUrl(), currentPlaybackTime());
     }
   });
 
   GM_registerMenuCommand('Open current video in MPV', () => {
-    dispatchOpen(callbacks, getVideoUrl(), null);
+    void dispatchOpen(callbacks, getVideoUrl(), null);
   });
   GM_registerMenuCommand('Toggle button visibility', () => {
     const current = getConfig('showButton');
@@ -394,4 +397,3 @@ export function initUserscriptUi(callbacks: DomCallbacks): void {
     }
   }
 }
-

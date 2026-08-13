@@ -53,28 +53,56 @@ describe('MpvHandlerClient constructor', () => {
 });
 
 describe('MpvHandlerClient#play', () => {
-  it('builds the request URL with url always present and t only when given', async () => {
+  function jsonBody(fetchImpl: typeof fetch): unknown {
+    const mock = fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } };
+    const call = mock.mock.calls[0];
+    if (!call) throw new Error('fetchImpl was not called');
+    const [, init] = call;
+    return JSON.parse(init.body as string);
+  }
+
+  it('POSTs a JSON body with url present and t/cookies omitted when not given', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ status: 'ok' })) as unknown as typeof fetch;
     const client = new MpvHandlerClient({ fetchImpl });
 
     await client.play('https://www.youtube.com/watch?v=abc&extra=1');
 
     expect(fetchImpl).toHaveBeenCalledWith(
-      'http://127.0.0.1:38421/play?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dabc%26extra%3D1',
-      expect.objectContaining({ signal: expect.anything() }),
+      'http://127.0.0.1:38421/play',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: expect.anything(),
+      }),
     );
+    expect(jsonBody(fetchImpl)).toEqual({
+      url: 'https://www.youtube.com/watch?v=abc&extra=1',
+    });
   });
 
-  it('appends an encoded t parameter when a timestamp is given', async () => {
+  it('includes a t field when a timestamp is given', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ status: 'ok' })) as unknown as typeof fetch;
     const client = new MpvHandlerClient({ fetchImpl });
 
     await client.play('https://www.youtube.com/watch?v=abc', { timestampSeconds: 12.5 });
 
-    expect(fetchImpl).toHaveBeenCalledWith(
-      'http://127.0.0.1:38421/play?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dabc&t=12.5',
-      expect.anything(),
-    );
+    expect(jsonBody(fetchImpl)).toEqual({
+      url: 'https://www.youtube.com/watch?v=abc',
+      t: '12.5',
+    });
+  });
+
+  it('includes a sanitized cookies field when cookies are given', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ status: 'ok' })) as unknown as typeof fetch;
+    const client = new MpvHandlerClient({ fetchImpl });
+    const cookies = [{ domain: '.twitch.tv', name: 'auth-token', value: 'secret' }];
+
+    await client.play('https://www.twitch.tv/somechannel', { cookies });
+
+    expect(jsonBody(fetchImpl)).toEqual({
+      url: 'https://www.twitch.tv/somechannel',
+      cookies,
+    });
   });
 
   it.each([-1, NaN, Infinity])(
@@ -89,6 +117,21 @@ describe('MpvHandlerClient#play', () => {
       expect(fetchImpl).not.toHaveBeenCalled();
     },
   );
+
+  it('rejects synchronously on an oversized cookies payload without calling fetch', async () => {
+    const fetchImpl = vi.fn() as unknown as typeof fetch;
+    const client = new MpvHandlerClient({ fetchImpl });
+    const cookies = Array.from({ length: 201 }, () => ({
+      domain: '.twitch.tv',
+      name: 'x',
+      value: 'y',
+    }));
+
+    await expect(client.play('https://www.twitch.tv/somechannel', { cookies })).rejects.toThrow(
+      RangeError,
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 
   it('resolves with the parsed body on a 200 ok response', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ status: 'ok' })) as unknown as typeof fetch;
