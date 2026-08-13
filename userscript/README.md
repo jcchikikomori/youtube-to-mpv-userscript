@@ -8,16 +8,17 @@ path on GitHub's raw content host).
 ```
 baseline/      -> talks to mpv-handler.py over HTTP, knows nothing about video platforms or the DOM
 contracts/     -> VideoSource interface + AbstractVideoSource template method
-platforms/     -> youtube/ and twitch/ (both implemented as platform modules — no Twitch-page
-                  DOM bundle yet, see platforms/twitch/README.md for what's still open)
-userscript/    -> the actual browser entry point: DOM/menu injection, GM_xmlhttpRequest transport
-                  adapter, clipboard fallback — wires baseline/contracts/platforms into main.ts
+platforms/     -> youtube/ and twitch/ platform modules (URL validation + timestamp parsing)
+userscript/    -> the actual browser entry point — ONE bundle, both sites: main.ts branches on
+                  location.hostname and wires up the matching platform source + DOM module
+                  (dom.ts for YouTube, domTwitch.ts for Twitch — see domTwitch.ts's own doc
+                  comments for why it has no menu-injection code, unlike dom.ts)
 ```
 
 `baseline/` and `contracts/`/`platforms/` are transport- and DOM-agnostic on purpose — they're
-reusable pieces, not dead architecture kept "for later." The `userscript/` layer is the only
-consumer today, but a hypothetical second browser bundle (e.g. Twitch) would compose the exact
-same baseline client and just add its own platform module + entry point.
+reusable pieces, not dead architecture kept "for later." Both `dom.ts` and `domTwitch.ts` compose
+the exact same `MpvHandlerClient`/`AbstractVideoSource` and just add their own platform module +
+DOM wiring — `main.ts` picks which pair to use per page load.
 
 ## Requirements
 
@@ -60,7 +61,7 @@ it just moves from "hand-write one file" to "let tsup produce one file." Writing
 normal ESM modules (this repo's existing TypeScript convention) means:
 
 - The DOM/UI code, the HTTP client, and the YouTube/Twitch validation logic can be unit tested
-  in isolation (222 tests, `npm test`), instead of only being checkable by hand in a real browser.
+  in isolation (238 tests, `npm test`), instead of only being checkable by hand in a real browser.
 - `MpvHandlerClient` reuses its existing `fetchImpl` injection seam for a
   `GM_xmlhttpRequest`-backed adapter (`userscript/gmFetch.ts`) instead of a raw `fetch()` — a
   page running on `https://` calling `http://127.0.0.1:38421` hits the browser's mixed-content
@@ -70,21 +71,29 @@ normal ESM modules (this repo's existing TypeScript convention) means:
 
 ## Adding a new platform
 
-[`src/platforms/twitch/`](src/platforms/twitch/README.md) is a worked example: a platform
-module implementing `VideoSource` (by extending `AbstractVideoSource`, which already provides
-`open()`) reusing the same `MpvHandlerClient`, with zero changes needed under `src/baseline/` or
-`src/contracts/`. Its README documents what's still open for Twitch specifically (a
-Twitch-page DOM bundle, and wiring live browser cookies into it) — useful as a template for
-what a _module_ needs, versus what a full platform integration needs on top of that. A second
-userscript bundle gets its own `src/userscript-<platform>/main.ts` entry and its own
-`tsup.config.ts` entry — the DOM/UI layer here is YouTube-page-specific and isn't meant to be
-shared across platforms.
+[`src/platforms/twitch/`](src/platforms/twitch/README.md) is a worked, complete example end to
+end: a platform module implementing `VideoSource` (by extending `AbstractVideoSource`, which
+already provides `open()`) plus its own DOM wiring (`src/userscript/domTwitch.ts`) — both
+composing the same `MpvHandlerClient`, with zero changes needed under `src/baseline/` or
+`src/contracts/`. Unlike YouTube's `dom.ts`, `domTwitch.ts` has no menu-injection code at all —
+Twitch doesn't override the browser's native right-click menu and its stream cards have no
+kebab/options button, so there's nothing to inject into (confirmed against real twitch.tv, see
+its README and the repo root `CLAUDE.md`'s "Twitch DOM Handling" section). Check that early for
+any new platform — don't assume every site has YouTube's menu surfaces.
+
+Wiring a new platform into the single unified bundle means: add `<Platform>Source extends
+AbstractVideoSource`, add `dom<Platform>.ts` mirroring `domTwitch.ts`'s shape, add its
+`@match`/`@grant` lines to `metadata.txt`, and add a branch in `main.ts`'s
+`location.hostname` dispatch. No new `tsup.config.ts` entry or separate bundle needed — this
+repo deliberately ships one script matching every supported site rather than one script per
+site (see the repo root `CLAUDE.md`'s Project Overview).
 
 Cookie forwarding for authenticated/subscriber-only playback is already plumbed all the way
 through `MpvHandlerClient`/`AbstractVideoSource`/`mpv-handler.py` (see `src/baseline/cookies.ts`
 and the repo root `CLAUDE.md`'s "MPV Launch Strategy" section) — a new platform module just
-needs to pass a `cookies` array into `open()`; the transport and handler already know what to
-do with it.
+needs its own `<platform>Cookies.ts` (mirroring `twitchCookies.ts`) with the domain filter
+**hardcoded** to that platform's own domain, never parametrized — that's what keeps different
+platforms' cookies from ever being combined in one request.
 
 ## Scripts
 
@@ -101,9 +110,14 @@ do with it.
 ## Manual smoke test
 
 The unit test suite mocks `GM_xmlhttpRequest`/`GM_getValue`/etc. and never talks to a live
-handler or real YouTube page — it proves the pieces behave correctly in isolation, not that mpv
-actually launches from a real browser. Run this checklist against the real `mpv-handler.py` (see
-the repo root README) before relying on a change:
+handler or real YouTube/Twitch page — it proves the pieces behave correctly in isolation, not
+that mpv actually launches from a real browser, and not that a real Tampermonkey install's
+`GM_cookie`/Trusted-Types behavior matches this repo's assumptions (see the repo root
+`CLAUDE.md`'s Testing section for exactly what has and hasn't been verified this way already).
+Run this checklist against the real `mpv-handler.py` (see the repo root README) before relying
+on a change:
+
+**YouTube:**
 
 1. `npm run build`, then install `dist/youtube-to-mpv.user.js` into Tampermonkey from disk.
 2. Start `mpv-handler.py`.
@@ -121,3 +135,18 @@ the repo root README) before relying on a change:
 9. On Windows, also check `%TEMP%\mpv-handler.log` for the repo's known Windows Defender caveat
    (documented in the repo root `CLAUDE.md`/`README.md`) — the HTTP call can succeed while mpv
    silently never launches.
+
+**Twitch:**
+
+1. With the handler running, open any live channel (`https://www.twitch.tv/<channel>`) — hover
+   the player to reveal its controls; the mpv icon should appear alongside settings/fullscreen.
+2. Click it — mpv should open the live stream. Confirm no "Open in MPV" appears on right-click
+   or on a stream card's area (there's nothing to right-click/kebab into — see "Twitch DOM
+   Handling" in the repo root `CLAUDE.md`).
+3. Open a VOD (`https://www.twitch.tv/videos/<id>`), let it play a bit, then `Ctrl+Shift+M` —
+   mpv should open at roughly the current playback position.
+4. Navigate to a non-watchable Twitch page (e.g. `/directory`) — the icon should not appear (or
+   should disappear if it was showing on a previous channel/VOD page beforehand).
+5. If you have a Twitch login and access to subscriber-only content, confirm it actually plays
+   (proves `GM_cookie.list()`'s real field shape matches `twitchCookies.ts`'s assumptions — this
+   is the one piece genuinely unverified without a live Tampermonkey session with real cookies).

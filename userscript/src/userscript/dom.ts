@@ -1,6 +1,7 @@
 import { isValidYoutubeVideoId, buildYoutubeWatchUrl } from '../platforms/youtube/validation.js';
 import { parseYoutubeTimestamp } from '../platforms/youtube/timestamp.js';
 import { getConfig, setConfig } from './config.js';
+import { MPV_ICON_SVG_CURRENT, MPV_ICON_SVG_WHITE } from './icons.js';
 import { showToast } from './toast.js';
 
 export interface DomCallbacks {
@@ -66,7 +67,7 @@ function dispatchOpen(
   timestampSeconds: number | null,
 ): void {
   if (!videoUrl) {
-    console.error('[YouTube to MPV] Could not extract video URL');
+    console.error('[Stream to MPV] Could not extract video URL');
     showToast('Failed to extract video URL', 'error');
     return;
   }
@@ -79,15 +80,6 @@ function currentPlaybackTime(): number | null {
   const currentTime = video ? Math.floor(video.currentTime) : 0;
   return currentTime > 0 ? currentTime : null;
 }
-
-// ==================== Icons ====================
-
-const MPV_ICON_PATHS = `
-  <path d="M8 5v14l11-7z"/>
-  <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42L17.59 5H14V3z" fill-opacity="0.7"/>
-`;
-const MPV_ICON_SVG_WHITE = `<svg height="24" width="24" viewBox="0 0 24 24" fill="white">${MPV_ICON_PATHS}</svg>`;
-const MPV_ICON_SVG_CURRENT = `<svg height="24" width="24" viewBox="0 0 24 24" fill="currentColor">${MPV_ICON_PATHS}</svg>`;
 
 // ==================== UI Injection ====================
 
@@ -153,7 +145,9 @@ function getRowAnchorHref(row: Element): string | null {
 
 /** Escape closes both `.ytp-contextmenu` and the popup container's dialog. */
 function dismissOpenMenus(): void {
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  document.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+  );
 }
 
 function buildContextMenuItem(label: string, onClick: () => void): HTMLElement {
@@ -394,4 +388,3 @@ export function initUserscriptUi(callbacks: DomCallbacks): void {
     }
   }
 }
-

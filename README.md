@@ -1,21 +1,27 @@
-# YouTube to MPV
+# Stream to MPV
 
-A Tampermonkey userscript that adds a button to YouTube's player controls to open videos in MPV media player.
+A Tampermonkey userscript that adds a button to YouTube's and Twitch's player controls to open
+videos/streams in MPV media player.
 
 ## Features
 
-- **One-click open**: Click the icon to open directly in MPV
-- **Keyboard shortcut**: Press `Ctrl+Shift+M`
-- **Right-click the player**: "Open in MPV" and "Open in MPV at current time" alongside YouTube's own "Copy video URL" items
-- **Right-click (kebab) any row**: "Open in MPV" from the "⋮" menu on home/search/sidebar rows — no need to open the video first
-- **Timestamp-aware**: Opening from a link with `?t=` (or "at current time" from the player) starts mpv at that point via `--start=`
+- **One-click open**: Click the icon to open directly in MPV (YouTube and Twitch)
+- **Keyboard shortcut**: Press `Ctrl+Shift+M` (YouTube and Twitch)
 - **Auto-launch**: Starts mpv automatically via local handler
 - **Auto-detect**: Handler finds mpv binary automatically
 - **Fallback**: Copies command if handler is offline
 - **Dark mode**: Notifications adapt to system theme
-- **SPA-aware**: Works with YouTube's dynamic navigation
+- **SPA-aware**: Works with both sites' dynamic navigation
 - **Icon-only**: Subtle SVG icon in player controls
 - **Systemd support**: Run as a background service
+- **Twitch cookie forwarding**: authenticated/subscriber-only Twitch playback, cookies read live
+  from the browser per request — never written to a standing file on disk
+
+YouTube-only (Twitch's page has no equivalent UI to hook into — see `CLAUDE.md` for why):
+
+- **Right-click the player**: "Open in MPV" and "Open in MPV at current time" alongside YouTube's own "Copy video URL" items
+- **Right-click (kebab) any row**: "Open in MPV" from the "⋮" menu on home/search/sidebar rows — no need to open the video first
+- **Timestamp-aware links**: Opening from a link with `?t=` (or "at current time" from the player) starts mpv at that point via `--start=`
 
 ## Installation
 
@@ -92,7 +98,14 @@ The handler runs on `http://127.0.0.1:38421` and auto-launches mpv.
 
 ### 4. Use
 
-Navigate to any YouTube video and click the icon (▶↗) in the player controls — or right-click the player, or open any row's "⋮" menu on the home/search/sidebar and pick "Open in MPV".
+**YouTube**: navigate to any video and click the icon (▶↗) in the player controls — or
+right-click the player, or open any row's "⋮" menu on the home/search/sidebar and pick "Open in
+MPV".
+
+**Twitch**: navigate to any live channel (`twitch.tv/<channel>`) or VOD
+(`twitch.tv/videos/<id>`), hover the player to reveal its controls, and click the icon (▶↗) —
+or press `Ctrl+Shift+M`. Twitch doesn't have a custom right-click menu or a per-row "⋮" options
+menu the way YouTube does, so those two features are YouTube-only.
 
 ## Usage
 
@@ -155,8 +168,9 @@ Access via Tampermonkey menu:
 | Setting | Default | Description |
 | --------- | --------- | ------------- |
 | `mpvPath` | `mpv` | Path to mpv binary (auto-detected by handler) |
-| `showButton` | `true` | Show icon in player controls |
+| `showButton` | `true` | Show icon in player controls (YouTube and Twitch) |
 | `autoPlaylist` | `false` | (Reserved for future use) |
+| `enableNativeMenuItems` | `true` | Show "Open in MPV" in YouTube's right-click and row "⋮" menus (YouTube only — Twitch has no equivalent menu) |
 
 ## Systemd Service
 
@@ -188,8 +202,11 @@ journalctl --user -u mpv-handler
 
 ## Testing
 
-Use this confirmed working video:
-`https://www.youtube.com/watch?v=eYT5mlLPS0Q`
+YouTube: use this confirmed working video: `https://www.youtube.com/watch?v=eYT5mlLPS0Q`
+
+Twitch: any live channel (`https://www.twitch.tv/<channel>`) or VOD
+(`https://www.twitch.tv/videos/<id>`) works — there's no fixed test URL since live channels come
+and go; pick anything currently live from `https://www.twitch.tv/directory`.
 
 ## License
 

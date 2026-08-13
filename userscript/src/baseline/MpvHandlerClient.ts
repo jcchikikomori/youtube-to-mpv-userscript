@@ -48,7 +48,7 @@ export class MpvHandlerClient {
 
     if (options.allowNonLoopback) {
       console.warn(
-        `[YouTube to MPV] MpvHandlerClient constructed with allowNonLoopback=true for baseUrl "${this.baseUrl}" — the loopback SSRF guard is disabled for this instance.`,
+        `[Stream to MPV] MpvHandlerClient constructed with allowNonLoopback=true for baseUrl "${this.baseUrl}" — the loopback SSRF guard is disabled for this instance.`,
       );
     } else {
       assertLoopbackUrl(this.baseUrl);

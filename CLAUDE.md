@@ -1,8 +1,11 @@
-# YouTube to MPV Userscript
+# Stream to MPV Userscript
 
 ## Project Overview
 
-A Tampermonkey/Greasemonkey userscript that adds an icon to YouTube's player control bar to open videos in MPV media player via a local handler.
+A Tampermonkey/Greasemonkey userscript that adds an icon to YouTube's and Twitch's player
+control bars to open videos/streams in MPV media player via a local handler. One unified
+`@match`es-both-hosts bundle — `main.ts` branches on `location.hostname` at startup, not two
+separate scripts (see Architecture below).
 
 **Primary target platforms**: Linux, macOS, Windows
 
@@ -24,10 +27,17 @@ userscript/                        ← TypeScript source + build (Node, dev-only
 │                                    platforms or the DOM
 ├── src/contracts/                   VideoSource interface + AbstractVideoSource template method
 ├── src/platforms/youtube/           YouTube URL/id validation + timestamp parsing
-├── src/platforms/twitch/            Twitch channel/VOD validation + timestamp parsing (library
-│                                    module only — no Twitch-page DOM bundle yet, see its README)
-├── src/userscript/                  the actual browser entry point: DOM/menu injection,
-│                                    GM_xmlhttpRequest transport adapter, clipboard fallback
+├── src/platforms/twitch/            Twitch channel/VOD validation + timestamp parsing
+├── src/userscript/                  the actual browser entry point — one bundle, both sites:
+│   ├── main.ts                        branches on location.hostname, wires up the matching
+│   │                                   platform source + DOM module
+│   ├── dom.ts                         YouTube: button, native menu injection, SPA nav
+│   ├── domTwitch.ts                   Twitch: button + SPA nav only — no menu injection (see
+│   │                                   "Twitch DOM Handling" below for why there's nothing to
+│   │                                   inject into)
+│   ├── twitchCookies.ts               GM_cookie.list(), hardcoded to the twitch.tv domain only
+│   ├── icons.ts                       shared SVG icon markup (both DOM modules)
+│   └── gmFetch.ts                     GM_xmlhttpRequest transport adapter, clipboard fallback
 └── dist/youtube-to-mpv.user.js      ← build output — THE distributed userscript, generated
                                        by `npm run build` (tsup), never hand-edited
 
@@ -80,6 +90,30 @@ a build step. See `userscript/README.md` for the full package layout and build/t
 - **Prefer URL parameters** — most reliable, least likely to break.
 - Player control bar: `.ytp-right-controls` — inject button here for auto-hide behavior.
 
+### Twitch DOM Handling
+
+- Twitch's DOM is **dynamic** (SPA navigation), same as YouTube — `MutationObserver` + `popstate`.
+- Channel/VOD identity always comes from the current page URL (`extractTwitchChannel`/
+  `extractTwitchVodId` in `platforms/twitch/validation.ts`) — Twitch exposes no
+  `ytInitialPlayerResponse`-equivalent global to read from.
+- Player control bar: `.player-controls__right-control-group` (confirmed live against a real
+  Twitch channel page) — same auto-hide-on-idle behavior as YouTube's `.ytp-right-controls`,
+  inject the button as a child of it the same way. Twitch's OWN control buttons use
+  webpack/styled-components-generated class names (e.g. `ScCoreButton-sc-ocjdkq-0 eBQIRH`) that
+  change between deploys — never style off those; the injected button uses inline styles only.
+- **No custom in-page context menu.** Confirmed by dispatching a real `contextmenu` event at the
+  player and checking `event.defaultPrevented` — it's `false`, meaning Twitch never calls
+  `preventDefault()` and just shows the browser's own native menu. A userscript cannot add items
+  to a native browser context menu (that requires a browser extension's `contextMenus` API,
+  which Tampermonkey userscripts don't have). So there is **no Twitch equivalent** of
+  `.ytp-contextmenu` — don't try to build one.
+- **No per-card "⋮" options menu** on stream preview cards (directory/category pages) either —
+  checked their DOM structure directly; there's no options button to hook into, so there's no
+  Twitch equivalent of YouTube's row-kebab injection either.
+- Net effect: Twitch integration is button + `Ctrl+Shift+M` only. Don't add "right-click the
+  Twitch player" or "kebab menu on a stream card" work items — they're not buildable, not
+  deferred.
+
 ### MPV Launch Strategy
 
 The script communicates with a local Python handler via HTTP:
@@ -102,8 +136,13 @@ The handler approach is preferred because:
 The clipboard fallback ensures the script still works if the handler isn't running.
 
 **Cookies (authenticated/subscriber-only playback)**: forwarded live, per request, from the
-browser (via `GM_cookie.list()` in the platform-specific bundle — not yet built for Twitch, see
-`userscript/src/platforms/twitch/README.md`) — never stored in a standing directory on disk.
+browser via `GM_cookie.list()` (`userscript/src/userscript/twitchCookies.ts`, wired into the
+Twitch path only — YouTube never fetches or sends cookies today) — never stored in a standing
+directory on disk. **Domain-scoped per platform, deliberately never combined**:
+`twitchCookies.ts` hardcodes `GM_cookie.list({ domain: 'twitch.tv' })` rather than accepting a
+domain parameter, specifically so a future YouTube cookie feature can't accidentally reuse that
+call and blur the two platforms' cookie sets together — if you add cookie support for another
+platform, write it its own equivalent file, don't parametrize this one.
 `mpv-handler.py` writes the `cookies` payload (if any) to a short-lived Netscape-format temp
 file under `<tempdir>/mpv-handler-cookies/`, passes it to yt-dlp via
 `--ytdl-raw-options=cookies=<path>`, and deletes it as soon as mpv exits (a background thread
@@ -130,9 +169,9 @@ Expose these as `@grant` GM_* values with defaults:
 | Setting | Default | Description |
 | --------- | --------- | ------------- |
 | `mpvPath` | `mpv` | Path to MPV binary (auto-detected by handler) |
-| `showButton` | `true` | Show icon in player controls |
+| `showButton` | `true` | Show icon in player controls (YouTube and Twitch) |
 | `autoPlaylist` | `false` | (Reserved for future use) |
-| `enableNativeMenuItems` | `true` | Show "Open in MPV" in the player right-click menu and row kebab ("⋮") menus |
+| `enableNativeMenuItems` | `true` | Show "Open in MPV" in the player right-click menu and row kebab ("⋮") menus — **YouTube only**, Twitch has no equivalent menus to inject into |
 
 ### Keyboard Shortcuts
 
@@ -296,9 +335,17 @@ This userscript runs in a privileged context with access to `GM_*` APIs. Apply t
 
 ### Input Validation
 
-- **Never trust YouTube's DOM** — validate extracted video IDs against `/^[a-zA-Z0-9_-]{11}$/` before use.
+- **Never trust YouTube's or Twitch's DOM** — validate extracted video IDs against
+  `/^[a-zA-Z0-9_-]{11}$/` (YouTube) before use. Twitch channel names validate against
+  `/^[a-zA-Z0-9_]{4,25}$/` **plus a reserved-path denylist** (`settings`, `videos`, `directory`,
+  etc.) so `twitch.tv/settings` is never misread as a channel — see
+  `platforms/twitch/validation.ts`. Twitch VOD ids are only ever recognized from the full
+  `/videos/<id>` URL form, never a bare numeric string — a bare all-digit string is ambiguous
+  with an all-digit channel name (Twitch allows those), so accepting it would break the
+  `supports()`/`resolveUrl()` non-disagreement invariant every platform module must satisfy.
 - Sanitize any user-configured values (MPV path) before passing to command construction.
-- Validate URLs before opening — only allow `https://youtube.com/watch?v=...` patterns.
+- Validate URLs before opening — only allow `https://youtube.com/watch?v=...` and
+  `https://twitch.tv/<channel>` / `https://twitch.tv/videos/<id>` patterns.
 - **The handler's base URL is checked against a literal loopback-hostname allowlist** (`userscript/src/baseline/loopback.ts`), never resolved via DNS (a resolve-then-check would open a DNS-rebinding/TOCTOU gap). `GM_xmlhttpRequest` (`userscript/src/userscript/gmFetch.ts`) follows redirects by default and isn't subject to the browser's own cross-origin checks, so the response's *final* URL is re-checked against the same allowlist before its body is trusted — a redirect can't be used to turn this privileged transport into an SSRF gadget against another local/internal address.
 - **Cookie payloads are validated on both ends, never trusted as-is.** TS side:
   `userscript/src/baseline/cookies.ts`'s `sanitizeCookiesForWire` strips any field outside a
@@ -335,30 +382,57 @@ This userscript runs in a privileged context with access to `GM_*` APIs. Apply t
 
 ## Testing
 
-- **Manual testing** on actual YouTube pages in Chrome/Firefox with Tampermonkey installed.
+- **Manual testing** (full, real Tampermonkey install) on actual YouTube/Twitch pages in
+  Chrome/Firefox — still the only way to verify against a real userscript-manager sandbox
+  end-to-end (privilege boundaries, `@grant`-gated APIs actually being present, etc.).
 - Test on Linux (Ubuntu/Fedora/Arch), macOS, and optionally Windows.
-- Verify SPA navigation: navigate between videos without full page reload.
-- Verify icon appears in player controls, click opens mpv.
-- Test keyboard shortcut `Ctrl+Shift+M`.
+- Verify SPA navigation: navigate between videos/channels without a full page reload.
+- Verify icon appears in player controls, click opens mpv, on **both** YouTube and Twitch.
+- Test keyboard shortcut `Ctrl+Shift+M` on **both** sites.
 - Test notification colors in light and dark mode.
-- Verify the player right-click menu ("Open in MPV" / "Open in MPV at current time") and the row kebab ("⋮") menu ("Open in MPV") on home/search/sidebar rows.
-- `userscript/` has a vitest suite (`npm test`, happy-dom) covering the HTTP client, YouTube
-  and Twitch validation/timestamp parsing, cookie sanitization, and the parts of the DOM layer
-  that don't depend on YouTube's real markup (button add/remove, toast shape). It mocks
-  `GM_*`/`fetch` — it proves those pieces behave correctly in isolation, not that mpv actually
-  launches from a real browser. Real YouTube-DOM/menu-injection behavior (the bullets above)
-  stays manual-browser-tested only — the same applies to any future Twitch-page DOM bundle.
+- Verify the player right-click menu ("Open in MPV" / "Open in MPV at current time") and the row
+  kebab ("⋮") menu ("Open in MPV") on home/search/sidebar rows — **YouTube only**, see "Twitch
+  DOM Handling" above for why Twitch has nothing equivalent.
+- `userscript/` has a vitest suite (`npm test`, happy-dom) covering the HTTP client, YouTube and
+  Twitch validation/timestamp parsing, cookie sanitization, and the parts of the DOM layer that
+  don't depend on either site's real markup (button add/remove, `GM_cookie` mocked responses,
+  toast shape). It mocks `GM_*`/`fetch` — it proves those pieces behave correctly in isolation,
+  not that mpv actually launches from a real browser.
+- **Scripted real-browser verification** (this repo's own history, not a standing test suite):
+  the Twitch button-injection selector (`.player-controls__right-control-group`), the
+  right-click/kebab-menu limitation, and the full click → extract URL → `GM_cookie.list` →
+  `MpvHandlerClient.play()` → POST body chain were all confirmed by scripting a real Chrome
+  instance against live `twitch.tv`/`youtube.com` pages with `GM_*` stubbed (never a real
+  Tampermonkey extension, never a real running handler). This is stronger than a pure unit test
+  for DOM-selector correctness, but it's still not the same as a real Tampermonkey sandbox —
+  notably, `youtube.com` enforces a Trusted Types CSP that blocks a page-context script's raw
+  `element.innerHTML =` assignment (worked around in that verification via a `default`
+  TrustedTypes policy shim); a real Tampermonkey content script is exempt from the page's CSP by
+  browser design, so this isn't a real bug in `dom.ts`/`domTwitch.ts`'s existing
+  `btn.innerHTML = MPV_ICON_SVG_WHITE` pattern, but it means a full Tampermonkey install is still
+  the only way to verify that exemption itself holds. `GM_cookie.list()`'s *real* Tampermonkey
+  field shape (leading-dot domain convention, `expirationDate` units) is also still unverified
+  against a real install — `twitchCookies.ts`'s mapping is written to the documented API shape.
 - `test_mpv_handler.py` (repo root, stdlib `unittest` — run with `python3 -m unittest
   test_mpv_handler`) covers `mpv-handler.py`'s cookie validation, Netscape-file generation, and
   the POST `/play` HTTP contract end-to-end against a real (but `MPV_PATH`-stubbed) server
   instance — including that a cookie temp file actually gets deleted after the launched process
   exits.
 
-### Test Video
+### Test Video / Test Channel
 
-Use `https://www.youtube.com/watch?v=eYT5mlLPS0Q` for testing — confirmed working URL with 3:23 duration. The player control bar is present and the video loads correctly.
+YouTube: use `https://www.youtube.com/watch?v=eYT5mlLPS0Q` — confirmed working URL with 3:23
+duration. The player control bar is present and the video loads correctly.
 
 **Caveat**: skip any pre-roll/mid-roll ad before testing the player right-click menu. During an ad, YouTube shows a reduced context menu without "Copy video URL" items — the feature-detection in `maybeInjectContextMenuItems` correctly (and intentionally) skips injecting into that reduced menu, so it can look like the feature is missing when it's actually just not the real video's menu yet.
+
+Twitch: no fixed test URL — live channels come and go. Pick anything currently live from
+`https://www.twitch.tv/directory`, or any VOD at `https://www.twitch.tv/videos/<id>`.
+
+**Caveat**: Twitch auto-hides its player controls (including the injected button) until the
+mouse hovers the player — a missing-looking button is almost always just that, not a bug. The
+button lives in the same `.player-controls__right-control-group` container as Twitch's own
+settings/fullscreen buttons, so it shows/hides in lockstep with them.
 
 ## Platform-Specific Notes
 
@@ -402,6 +476,13 @@ Use `https://www.youtube.com/watch?v=eYT5mlLPS0Q` for testing — confirmed work
 - The `@updateURL` and `@installURL` metadata (set in `userscript/src/userscript/metadata.txt`,
   which tsup prepends verbatim as the build's banner) point at that raw GitHub URL.
 - Version with semver in the metadata block.
+- `@name` is `"Stream to MPV"` (renamed from `"Steam to MPV (YouTube)"` — matches the repo's own
+  `stream-to-mpv` name now that Twitch is a real feature, not just YouTube). The **dist filename**
+  (`youtube-to-mpv.user.js`) was deliberately left unchanged, even though it no longer matches
+  the display name — `@updateURL`/`@installURL` point at that exact path, and renaming it would
+  404 the next auto-update check for anyone who already has the script installed. Renaming the
+  file is a separate, deliberate follow-up (would need a migration plan for existing installs),
+  not something to do incidentally alongside an unrelated change.
 
 ## Common Issues & Troubleshooting
 
@@ -414,6 +495,8 @@ Use `https://www.youtube.com/watch?v=eYT5mlLPS0Q` for testing — confirmed work
 | Cookies/Twitch feature seems missing | Local `mpv-handler.py` predates this change — it isn't auto-updated like the userscript | Pull the latest `mpv-handler.py` and restart the handler |
 | Toast not showing | CSS animation issue | Check for conflicting styles |
 | Wrong video opens | URL extraction failed | Check `ytInitialPlayerResponse` fallback |
+| Twitch icon doesn't appear | Twitch auto-hides player controls until hover | Move the mouse over the player — the icon lives in the same auto-hide group as Twitch's own settings/fullscreen buttons |
+| Twitch right-click/kebab menu has no "Open in MPV" | Not a bug — Twitch has no custom context menu or per-card options menu (see "Twitch DOM Handling") | Use the player control-bar icon or `Ctrl+Shift+M` instead |
 
 ## See Also
 

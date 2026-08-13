@@ -1,15 +1,19 @@
 // ==UserScript==
-// @name         Steam to MPV (YouTube)
+// @name         Stream to MPV
 // @namespace    https://github.com/jcchikikomori/stream-to-mpv
-// @version      0.4.0
-// @description  Open YouTube videos directly in MPV media player via system protocol handlers
+// @version      0.5.0
+// @description  Open YouTube and Twitch videos directly in MPV media player via system protocol handlers
 // @author       John Cyrill Corsanes
 // @match        https://www.youtube.com/*
 // @match        https://youtube.com/*
+// @match        https://www.twitch.tv/*
+// @match        https://twitch.tv/*
+// @match        https://m.twitch.tv/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
+// @grant        GM_cookie
 // @connect      127.0.0.1
 // @connect      localhost
 // @run-at       document-idle

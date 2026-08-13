@@ -12,9 +12,9 @@ export interface OpenResult {
 }
 
 /**
- * Contract every platform module implements (YouTube today, Twitch later). A future platform
- * plugs in purely by implementing this interface (typically via AbstractVideoSource) — nothing
- * under baseline/ or this file needs to change.
+ * Contract every platform module implements (YouTube, Twitch today). A future platform plugs in
+ * purely by implementing this interface (typically via AbstractVideoSource) — nothing under
+ * baseline/ or this file needs to change.
  */
 // Members are typed as function-valued properties (`foo: (x) => y`), not method signatures
 // (`foo(x): y`), on purpose: method signatures carry an implicit `this` and trip
