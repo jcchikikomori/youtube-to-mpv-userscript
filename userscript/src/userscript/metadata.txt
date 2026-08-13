@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Stream to MPV
 // @namespace    https://github.com/jcchikikomori/stream-to-mpv
-// @version      0.5.0
+// @version      0.6.0
 // @description  Open YouTube and Twitch videos directly in MPV media player via system protocol handlers
 // @author       John Cyrill Corsanes
 // @match        https://www.youtube.com/*

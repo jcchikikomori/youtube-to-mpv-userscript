@@ -4,7 +4,9 @@ import { injectButton, removeButton, type DomCallbacks } from './dom.js';
 function stubGmValue(showButton: boolean): void {
   vi.stubGlobal(
     'GM_getValue',
-    vi.fn((key: string, defaultValue: unknown) => (key === 'showButton' ? showButton : defaultValue)),
+    vi.fn((key: string, defaultValue: unknown) =>
+      key === 'showButton' ? showButton : defaultValue,
+    ),
   );
 }
 
@@ -64,18 +66,69 @@ describe('injectButton / removeButton', () => {
     expect(() => removeButton()).not.toThrow();
   });
 
-  it('clicking the button calls openInMpv with the page video URL, when resolvable', () => {
+  it('clicking the button calls openInMpv with the page video URL, null timestamp, and null cookies (GM_cookie unavailable)', async () => {
     Object.defineProperty(window, 'location', {
       value: new URL('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
       writable: true,
     });
     injectButton(callbacks);
 
-    document.getElementById('mpv-open-btn')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    document
+      .getElementById('mpv-open-btn')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
+    await vi.waitFor(() => expect(callbacks.openInMpv).toHaveBeenCalled());
     expect(callbacks.openInMpv).toHaveBeenCalledWith(
       'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
       null,
+      null,
+    );
+  });
+
+  it('clicking the button forwards cookies when GM_cookie provides them', async () => {
+    Object.defineProperty(window, 'location', {
+      value: new URL('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
+      writable: true,
+    });
+    const rawCookie: GMCookie = {
+      domain: '.youtube.com',
+      name: 'SID',
+      value: 'secret',
+      path: '/',
+      secure: true,
+      httpOnly: true,
+      session: false,
+      expirationDate: 1750000000,
+    };
+    vi.stubGlobal('GM_cookie', {
+      list: (
+        _details: GMCookieListDetails,
+        callback: (cookies: GMCookie[], error: string | null) => void,
+      ) => {
+        callback([rawCookie], null);
+      },
+    });
+    injectButton(callbacks);
+
+    document
+      .getElementById('mpv-open-btn')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    await vi.waitFor(() => expect(callbacks.openInMpv).toHaveBeenCalled());
+    expect(callbacks.openInMpv).toHaveBeenCalledWith(
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      null,
+      [
+        {
+          domain: '.youtube.com',
+          name: 'SID',
+          value: 'secret',
+          path: '/',
+          secure: true,
+          httpOnly: true,
+          expirationDate: 1750000000,
+        },
+      ],
     );
   });
 });

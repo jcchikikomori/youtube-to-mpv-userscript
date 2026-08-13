@@ -14,8 +14,9 @@ videos/streams in MPV media player.
 - **SPA-aware**: Works with both sites' dynamic navigation
 - **Icon-only**: Subtle SVG icon in player controls
 - **Systemd support**: Run as a background service
-- **Twitch cookie forwarding**: authenticated/subscriber-only Twitch playback, cookies read live
-  from the browser per request — never written to a standing file on disk
+- **Cookie forwarding (YouTube and Twitch)**: authenticated/members-only YouTube and
+  subscriber-only Twitch playback, cookies read live from the browser per request, per platform
+  (never combined) — never written to a standing file on disk
 
 YouTube-only (Twitch's page has no equivalent UI to hook into — see `CLAUDE.md` for why):
 

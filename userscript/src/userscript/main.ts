@@ -65,9 +65,7 @@ if (window.location.hostname.includes('twitch.tv')) {
 } else {
   const youtubeSource = new YoutubeSource(client);
   initUserscriptUi({
-    // YouTube never sources cookies today — no GM_cookie call on this path, by design (see
-    // twitchCookies.ts's own doc comment on why that domain scoping must stay per-platform).
-    openInMpv: (videoUrl, timestampSeconds) =>
-      openInMpv(youtubeSource, videoUrl, timestampSeconds, null),
+    openInMpv: (videoUrl, timestampSeconds, cookies) =>
+      openInMpv(youtubeSource, videoUrl, timestampSeconds, cookies),
   });
 }

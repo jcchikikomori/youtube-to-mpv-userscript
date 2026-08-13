@@ -36,6 +36,7 @@ userscript/                        ← TypeScript source + build (Node, dev-only
 │   │                                   "Twitch DOM Handling" below for why there's nothing to
 │   │                                   inject into)
 │   ├── twitchCookies.ts               GM_cookie.list(), hardcoded to the twitch.tv domain only
+│   ├── youtubeCookies.ts              GM_cookie.list(), hardcoded to the youtube.com domain only
 │   ├── icons.ts                       shared SVG icon markup (both DOM modules)
 │   └── gmFetch.ts                     GM_xmlhttpRequest transport adapter, clipboard fallback
 └── dist/youtube-to-mpv.user.js      ← build output — THE distributed userscript, generated
@@ -136,13 +137,14 @@ The handler approach is preferred because:
 The clipboard fallback ensures the script still works if the handler isn't running.
 
 **Cookies (authenticated/subscriber-only playback)**: forwarded live, per request, from the
-browser via `GM_cookie.list()` (`userscript/src/userscript/twitchCookies.ts`, wired into the
-Twitch path only — YouTube never fetches or sends cookies today) — never stored in a standing
-directory on disk. **Domain-scoped per platform, deliberately never combined**:
-`twitchCookies.ts` hardcodes `GM_cookie.list({ domain: 'twitch.tv' })` rather than accepting a
-domain parameter, specifically so a future YouTube cookie feature can't accidentally reuse that
-call and blur the two platforms' cookie sets together — if you add cookie support for another
-platform, write it its own equivalent file, don't parametrize this one.
+browser via `GM_cookie.list()` — wired into **both** platforms, each with its own file:
+`userscript/src/userscript/twitchCookies.ts` and `userscript/src/userscript/youtubeCookies.ts`
+— never stored in a standing directory on disk. **Domain-scoped per platform, deliberately never
+combined**: `twitchCookies.ts` hardcodes `GM_cookie.list({ domain: 'twitch.tv' })` and
+`youtubeCookies.ts` hardcodes `GM_cookie.list({ domain: 'youtube.com' })`, neither accepting a
+domain parameter, specifically so neither call can accidentally read the other platform's
+cookies and blur the two platforms' cookie sets together — if you add cookie support for another
+platform, write it its own equivalent file, don't parametrize either of these.
 `mpv-handler.py` writes the `cookies` payload (if any) to a short-lived Netscape-format temp
 file under `<tempdir>/mpv-handler-cookies/`, passes it to yt-dlp via
 `--ytdl-raw-options=cookies=<path>`, and deletes it as soon as mpv exits (a background thread
@@ -412,7 +414,8 @@ This userscript runs in a privileged context with access to `GM_*` APIs. Apply t
   `btn.innerHTML = MPV_ICON_SVG_WHITE` pattern, but it means a full Tampermonkey install is still
   the only way to verify that exemption itself holds. `GM_cookie.list()`'s *real* Tampermonkey
   field shape (leading-dot domain convention, `expirationDate` units) is also still unverified
-  against a real install — `twitchCookies.ts`'s mapping is written to the documented API shape.
+  against a real install — `twitchCookies.ts`'s and `youtubeCookies.ts`'s mappings are both
+  written to the documented API shape.
 - `test_mpv_handler.py` (repo root, stdlib `unittest` — run with `python3 -m unittest
   test_mpv_handler`) covers `mpv-handler.py`'s cookie validation, Netscape-file generation, and
   the POST `/play` HTTP contract end-to-end against a real (but `MPV_PATH`-stubbed) server
@@ -497,6 +500,7 @@ settings/fullscreen buttons, so it shows/hides in lockstep with them.
 | Wrong video opens | URL extraction failed | Check `ytInitialPlayerResponse` fallback |
 | Twitch icon doesn't appear | Twitch auto-hides player controls until hover | Move the mouse over the player — the icon lives in the same auto-hide group as Twitch's own settings/fullscreen buttons |
 | Twitch right-click/kebab menu has no "Open in MPV" | Not a bug — Twitch has no custom context menu or per-card options menu (see "Twitch DOM Handling") | Use the player control-bar icon or `Ctrl+Shift+M` instead |
+| Members-only YouTube video fails in mpv (`Join this channel to get access...`) | No YouTube session cookies reached yt-dlp — either `GM_cookie` is unavailable, you're not logged in in the browser running the userscript, or `mpv-handler.py` predates cookie support | Confirm you're logged into YouTube in that browser; pull the latest `mpv-handler.py` if it predates this feature and restart the handler |
 
 ## See Also
 

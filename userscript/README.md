@@ -61,7 +61,7 @@ it just moves from "hand-write one file" to "let tsup produce one file." Writing
 normal ESM modules (this repo's existing TypeScript convention) means:
 
 - The DOM/UI code, the HTTP client, and the YouTube/Twitch validation logic can be unit tested
-  in isolation (238 tests, `npm test`), instead of only being checkable by hand in a real browser.
+  in isolation (246 tests, `npm test`), instead of only being checkable by hand in a real browser.
 - `MpvHandlerClient` reuses its existing `fetchImpl` injection seam for a
   `GM_xmlhttpRequest`-backed adapter (`userscript/gmFetch.ts`) instead of a raw `fetch()` — a
   page running on `https://` calling `http://127.0.0.1:38421` hits the browser's mixed-content
@@ -135,6 +135,9 @@ on a change:
 9. On Windows, also check `%TEMP%\mpv-handler.log` for the repo's known Windows Defender caveat
    (documented in the repo root `CLAUDE.md`/`README.md`) — the HTTP call can succeed while mpv
    silently never launches.
+10. If you're logged into YouTube with access to members-only content, confirm it actually plays
+    (proves `GM_cookie.list()`'s real field shape matches `youtubeCookies.ts`'s assumptions —
+    same genuinely-unverified-without-a-real-session caveat as Twitch's step 5 below).
 
 **Twitch:**
 
