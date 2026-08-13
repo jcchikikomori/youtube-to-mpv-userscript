@@ -85,27 +85,37 @@ describe('injectButton / removeButton', () => {
     );
   });
 
-  it('clicking the button forwards cookies when GM_cookie provides them', async () => {
+  it('clicking the button forwards cookies merged from both youtube.com and google.com', async () => {
     Object.defineProperty(window, 'location', {
       value: new URL('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
       writable: true,
     });
-    const rawCookie: GMCookie = {
+    const youtubeCookie: GMCookie = {
       domain: '.youtube.com',
+      name: 'PREF',
+      value: 'yt-pref',
+      path: '/',
+      secure: true,
+      httpOnly: false,
+      session: false,
+      expirationDate: 1750000000,
+    };
+    const googleCookie: GMCookie = {
+      domain: '.google.com',
       name: 'SID',
       value: 'secret',
       path: '/',
       secure: true,
       httpOnly: true,
       session: false,
-      expirationDate: 1750000000,
+      expirationDate: 1750000001,
     };
     vi.stubGlobal('GM_cookie', {
       list: (
-        _details: GMCookieListDetails,
+        details: GMCookieListDetails,
         callback: (cookies: GMCookie[], error: string | null) => void,
       ) => {
-        callback([rawCookie], null);
+        callback(details.domain === 'google.com' ? [googleCookie] : [youtubeCookie], null);
       },
     });
     injectButton(callbacks);
@@ -121,12 +131,21 @@ describe('injectButton / removeButton', () => {
       [
         {
           domain: '.youtube.com',
+          name: 'PREF',
+          value: 'yt-pref',
+          path: '/',
+          secure: true,
+          httpOnly: false,
+          expirationDate: 1750000000,
+        },
+        {
+          domain: '.google.com',
           name: 'SID',
           value: 'secret',
           path: '/',
           secure: true,
           httpOnly: true,
-          expirationDate: 1750000000,
+          expirationDate: 1750000001,
         },
       ],
     );

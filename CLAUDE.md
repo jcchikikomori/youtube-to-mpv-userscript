@@ -140,8 +140,12 @@ The clipboard fallback ensures the script still works if the handler isn't runni
 browser via `GM_cookie.list()` — wired into **both** platforms, each with its own file:
 `userscript/src/userscript/twitchCookies.ts` and `userscript/src/userscript/youtubeCookies.ts`
 — never stored in a standing directory on disk. **Domain-scoped per platform, deliberately never
-combined**: `twitchCookies.ts` hardcodes `GM_cookie.list({ domain: 'twitch.tv' })` and
-`youtubeCookies.ts` hardcodes `GM_cookie.list({ domain: 'youtube.com' })`, neither accepting a
+combined**: `twitchCookies.ts` hardcodes `GM_cookie.list({ domain: 'twitch.tv' })`.
+`youtubeCookies.ts` hardcodes two domains — `youtube.com` **and** `google.com`, merged into one
+export — because YouTube's actual session/identity cookies (`SID`, `SAPISID`, `LOGIN_INFO`,
+etc.) live on the `.google.com` apex domain, not `.youtube.com`; a youtube.com-only export
+builds a cookie file that yt-dlp receives but that doesn't actually authenticate anything,
+failing member-only content exactly as if no cookies had been sent. Neither file accepts a
 domain parameter, specifically so neither call can accidentally read the other platform's
 cookies and blur the two platforms' cookie sets together — if you add cookie support for another
 platform, write it its own equivalent file, don't parametrize either of these.
