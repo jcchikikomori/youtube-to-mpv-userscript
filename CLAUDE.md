@@ -8,7 +8,8 @@ A Tampermonkey/Greasemonkey userscript that adds an icon to YouTube's player con
 
 ## Tech Stack
 
-- **Language**: JavaScript (ES6+, userscript-compatible — no modules, no build step)
+- **Language**: TypeScript, bundled by tsup into a single dependency-free ES6+ file for
+  Tampermonkey (source lives in `userscript/src/userscript/`; see Architecture below)
 - **Runtime**: Tampermonkey / Greasemonkey userscript context
 - **APIs**: YouTube DOM manipulation, `GM_*` privileged APIs, Clipboard API
 - **Player**: MPV (external, system-installed)
@@ -18,16 +19,16 @@ A Tampermonkey/Greasemonkey userscript that adds an icon to YouTube's player con
 ## Architecture
 
 ```
-youtube-to-mpv.user.js   ← Userscript (browser)
-├── Metadata block (@grant, @match, etc.)
-├── Config section (user-adjustable settings)
-├── YouTube page detection & URL extraction
-├── Local handler communication (GM_xmlhttpRequest)
-├── Clipboard fallback (if handler offline)
-├── UI injection (icon in player control bar)
-├── Native menu injection (player right-click menu, row kebab popup)
-├── Toast notification (dark mode aware)
-└── SPA navigation detection (MutationObserver)
+userscript/                        ← TypeScript source + build (Node, dev-only)
+├── src/baseline/                    MpvHandlerClient — HTTP transport, knows nothing about
+│                                    platforms or the DOM
+├── src/contracts/                   VideoSource interface + AbstractVideoSource template method
+├── src/platforms/youtube/           YouTube URL/id validation + timestamp parsing
+├── src/platforms/twitch/            extension-point recipe only, no code yet
+├── src/userscript/                  the actual browser entry point: DOM/menu injection,
+│                                    GM_xmlhttpRequest transport adapter, clipboard fallback
+└── dist/youtube-to-mpv.user.js      ← build output — THE distributed userscript, generated
+                                       by `npm run build` (tsup), never hand-edited
 
 mpv-handler.py                     ← Local server (system, all platforms)
 ├── HTTP server on 127.0.0.1:38421
@@ -44,14 +45,20 @@ Startup scripts (OS-specific):
 pyproject.toml                     ← uv-managed pin for yt-dlp/youtube-dl (mpv's deps, not the handler's)
 ```
 
-The entire script is a single `.user.js` file. No build system, no dependencies, no npm.
+`dist/youtube-to-mpv.user.js` is the single dependency-free file Tampermonkey installs — that
+constraint didn't go away, it just moved from "hand-write one file" to "let tsup bundle one
+file." `mpv-handler.py` remains hand-written stdlib-only Python; only the userscript side gained
+a build step. See `userscript/README.md` for the full package layout and build/test commands.
 
 ## Development Guidelines
 
 ### Code Style
 
-- **No transpilation** — write plain ES6+ that runs in Tampermonkey's sandbox
-- **No ES modules** — userscripts use `@require` or inline code; keep everything in one file
+- **TypeScript source, bundled output** — write TS under `userscript/src/userscript/`; `npm run
+  build` (tsup) compiles it down to plain ES6+ for Tampermonkey's sandbox
+- **No ES modules in the shipped artifact** — the *source* uses standard ESM `import`/`export`
+  (matching the rest of `userscript/`); the bundler flattens it into one dependency-free IIFE,
+  since Tampermonkey itself still can't load multiple files or npm packages at runtime
 - **Use `GM_*` APIs** for storage and privileged operations
 - **Strict equality** (`===`), `const`/`let` only, no `var`
 - **Semicolons required**
@@ -273,6 +280,7 @@ This userscript runs in a privileged context with access to `GM_*` APIs. Apply t
 - **Never trust YouTube's DOM** — validate extracted video IDs against `/^[a-zA-Z0-9_-]{11}$/` before use.
 - Sanitize any user-configured values (MPV path) before passing to command construction.
 - Validate URLs before opening — only allow `https://youtube.com/watch?v=...` patterns.
+- **The handler's base URL is checked against a literal loopback-hostname allowlist** (`userscript/src/baseline/loopback.ts`), never resolved via DNS (a resolve-then-check would open a DNS-rebinding/TOCTOU gap). `GM_xmlhttpRequest` (`userscript/src/userscript/gmFetch.ts`) follows redirects by default and isn't subject to the browser's own cross-origin checks, so the response's *final* URL is re-checked against the same allowlist before its body is trusted — a redirect can't be used to turn this privileged transport into an SSRF gadget against another local/internal address.
 
 ### Output Encoding
 
@@ -303,7 +311,11 @@ This userscript runs in a privileged context with access to `GM_*` APIs. Apply t
 - Test keyboard shortcut `Ctrl+Shift+M`.
 - Test notification colors in light and dark mode.
 - Verify the player right-click menu ("Open in MPV" / "Open in MPV at current time") and the row kebab ("⋮") menu ("Open in MPV") on home/search/sidebar rows.
-- No automated test framework — this is a userscript, tested via browser developer tools.
+- `userscript/` has a vitest suite (`npm test`, happy-dom) covering the HTTP client, YouTube
+  validation/timestamp parsing, and the parts of the DOM layer that don't depend on YouTube's
+  real markup (button add/remove, toast shape). It mocks `GM_*`/`fetch` — it proves those pieces
+  behave correctly in isolation, not that mpv actually launches from a real browser. Real
+  YouTube-DOM/menu-injection behavior (the bullets above) stays manual-browser-tested only.
 
 ### Test Video
 
@@ -346,9 +358,12 @@ Use `https://www.youtube.com/watch?v=eYT5mlLPS0Q` for testing — confirmed work
 
 ## Distribution
 
-- The `.user.js` file is distributed directly — users install it by opening the URL in Tampermonkey.
-- Host the raw `.user.js` on GitHub (raw.githubusercontent.com) for one-click install.
-- The `@updateURL` and `@installURL` metadata should point to the raw GitHub URL.
+- `userscript/dist/youtube-to-mpv.user.js` (the tsup build output, committed to the repo despite
+  living under `dist/` — see `.gitignore`'s negation for that one path) is distributed directly —
+  users install it by opening the raw URL in Tampermonkey.
+- Host it on GitHub (raw.githubusercontent.com) for one-click install.
+- The `@updateURL` and `@installURL` metadata (set in `userscript/src/userscript/metadata.txt`,
+  which tsup prepends verbatim as the build's banner) point at that raw GitHub URL.
 - Version with semver in the metadata block.
 
 ## Common Issues & Troubleshooting

@@ -26,3 +26,8 @@ __pycache__/
 
 # Claude Code
 .codegraph
+
+# Node / userscript build
+userscript/node_modules/
+userscript/dist/*
+!userscript/dist/youtube-to-mpv.user.js
