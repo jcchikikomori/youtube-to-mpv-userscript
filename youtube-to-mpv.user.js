@@ -309,6 +309,7 @@
       min-width: auto;
       display: flex;
       align-items: center;
+      justify-content: center;
     `;
 
     btn.addEventListener('click', (e) => {
@@ -451,9 +452,9 @@
 
     listbox.dataset.mpvInjected = 'true';
 
-    const { videoId, timestamp } = pendingRowTarget;
     listbox.appendChild(buildRowMenuItem('Open in MPV', () => {
-      openInMpv(getVideoUrl(videoId), timestamp);
+      if (!pendingRowTarget) return;
+      openInMpv(getVideoUrl(pendingRowTarget.videoId), pendingRowTarget.timestamp);
       dismissOpenMenus();
     }));
   }
@@ -519,6 +520,16 @@
       from { opacity: 1; transform: translateX(-50%) translateY(0); }
       to { opacity: 0; transform: translateX(-50%) translateY(10px); }
     }
+    /* Overrides YouTube's "Delhi" redesign, which pads every .ytp-button svg
+       (12px 12px) and would otherwise squeeze our fixed-size icon down to a
+       sliver. The #id selector outranks that rule's 4 classes regardless of
+       stylesheet order. */
+    #mpv-open-btn svg {
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      display: block;
+    }
     .mpv-row-menuitem {
       display: flex;
       align-items: center;
@@ -527,7 +538,7 @@
       font-size: 14px;
       line-height: 20px;
       cursor: pointer;
-      color: var(--yt-spec-text-primary, #0f0f0f);
+      color: #0f0f0f;
     }
     .mpv-row-menuitem svg {
       width: 24px;
@@ -537,10 +548,11 @@
     .mpv-row-menuitem:hover {
       background: rgba(0, 0, 0, 0.1);
     }
-    @media (prefers-color-scheme: dark) {
-      .mpv-row-menuitem:hover {
-        background: rgba(255, 255, 255, 0.1);
-      }
+    html[dark] .mpv-row-menuitem {
+      color: #fff;
+    }
+    html[dark] .mpv-row-menuitem:hover {
+      background: rgba(255, 255, 255, 0.1);
     }
   `;
   document.head.appendChild(style);
@@ -548,7 +560,9 @@
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === 'M') {
       e.preventDefault();
-      openInMpv();
+      const video = document.querySelector('video');
+      const currentTime = video ? Math.floor(video.currentTime) : 0;
+      openInMpv(getVideoUrl(), currentTime > 0 ? currentTime : null);
     }
   });
 

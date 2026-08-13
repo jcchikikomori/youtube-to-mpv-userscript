@@ -141,7 +141,7 @@ nssm status mpv-handler
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Shift+M` | Open in MPV |
+| `Ctrl+Shift+M` | Open in MPV at current time |
 
 ## Configuration
 

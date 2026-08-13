@@ -112,7 +112,7 @@ Expose these as `@grant` GM_* values with defaults:
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Shift+M` | Open in MPV |
+| `Ctrl+Shift+M` | Open in MPV at current time |
 
 ## Common Patterns
 
